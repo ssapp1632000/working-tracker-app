@@ -272,22 +272,35 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     return searchFieldHeight + listHeight;
   }
 
-  /// Filters projects based on search query
-  List<dynamic> _filterProjects(List<dynamic> projects) {
-    if (_searchQuery.isEmpty) {
-      return projects;
+  /// Filters projects based on search query and sorts them with active project first
+  List<dynamic> _filterProjects(List<dynamic> projects, String? activeProjectId) {
+    // First, filter by search query
+    List<dynamic> filtered = projects;
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = projects.where((project) {
+        final name = project.name?.toLowerCase() ?? '';
+        final client = project.client?.toLowerCase() ?? '';
+        final description = project.description?.toLowerCase() ?? '';
+
+        return name.contains(query) ||
+               client.contains(query) ||
+               description.contains(query);
+      }).toList();
     }
 
-    final query = _searchQuery.toLowerCase();
-    return projects.where((project) {
-      final name = project.name?.toLowerCase() ?? '';
-      final client = project.client?.toLowerCase() ?? '';
-      final description = project.description?.toLowerCase() ?? '';
+    // Sort projects: active project first, then maintain original order for the rest
+    if (activeProjectId != null) {
+      // Separate active and non-active projects to maintain stable order
+      final activeProject = filtered.where((p) => p.id == activeProjectId).toList();
+      final otherProjects = filtered.where((p) => p.id != activeProjectId).toList();
 
-      return name.contains(query) ||
-             client.contains(query) ||
-             description.contains(query);
-    }).toList();
+      // Return with active project first, followed by others in original order
+      return [...activeProject, ...otherProjects];
+    }
+
+    return filtered;
   }
 
   /// Calculates the total widget height based on expansion state
@@ -588,7 +601,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Builds the scrollable project list dropdown with search
   Widget _buildProjectList(List<dynamic> projects, dynamic currentTimer) {
-    final filteredProjects = _filterProjects(projects);
+    final filteredProjects = _filterProjects(projects, currentTimer?.projectId);
 
     return Container(
       height: _getDropdownHeight(filteredProjects.length),

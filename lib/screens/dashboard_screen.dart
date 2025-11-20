@@ -31,25 +31,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     super.dispose();
   }
 
-  /// Filters projects based on search query
-  List<Project> _filterProjects(List<Project> projects) {
-    if (_searchQuery.isEmpty) {
-      return projects;
+  /// Filters projects based on search query and sorts them with active project first
+  List<Project> _filterProjects(List<Project> projects, String? activeProjectId) {
+    // First, filter by search query
+    List<Project> filtered = projects;
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = projects.where((project) {
+        final name = project.name.toLowerCase();
+        final client = project.client?.toLowerCase() ?? '';
+        final description = project.description?.toLowerCase() ?? '';
+
+        return name.contains(query) ||
+               client.contains(query) ||
+               description.contains(query);
+      }).toList();
     }
 
-    final query = _searchQuery.toLowerCase();
-    return projects.where((project) {
-      final name = project.name.toLowerCase();
-      final client = project.client?.toLowerCase() ?? '';
-      final description = project.description?.toLowerCase() ?? '';
+    // Sort projects: active project first, then maintain original order for the rest
+    if (activeProjectId != null) {
+      // Separate active and non-active projects to maintain stable order
+      final activeProject = filtered.where((p) => p.id == activeProjectId).toList();
+      final otherProjects = filtered.where((p) => p.id != activeProjectId).toList();
 
-      return name.contains(query) ||
-             client.contains(query) ||
-             description.contains(query);
-    }).toList();
+      // Return with active project first, followed by others in original order
+      return [...activeProject, ...otherProjects];
+    }
+
+    return filtered;
   }
 
   Future<void> _handleLogout() async {
+    // Check if there's an active session with accumulated time
+    final sessionTotalTime = ref.read(sessionTotalTimeProvider);
+
+    if (sessionTotalTime.inSeconds > 0) {
+      // Block logout if there's active session time
+      await context.showAlertDialog(
+        title: 'Cannot Logout',
+        content: 'You have an active session with ${DateTimeUtils.formatDuration(sessionTotalTime)} of tracked time. Please submit your report before logging out.',
+        confirmText: 'OK',
+      );
+      return;
+    }
+
     final confirmed = await context.showAlertDialog(
       title: 'Logout',
       content: 'Are you sure you want to logout?',
@@ -309,7 +335,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   );
                 }
 
-                final filteredProjects = _filterProjects(projects);
+                final filteredProjects = _filterProjects(projects, currentTimer?.projectId);
 
                 return RefreshIndicator(
                   onRefresh: () async {

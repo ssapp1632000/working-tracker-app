@@ -55,6 +55,10 @@ dependencies:
   # HTTP client for API calls
   http: ^1.2.2
 
+  # File picker for attachments
+  file_picker: ^8.1.4
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

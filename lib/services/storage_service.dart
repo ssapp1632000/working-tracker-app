@@ -182,6 +182,17 @@ class StorageService {
     }
   }
 
+  // Clear all time entries (reset session)
+  Future<void> clearAllTimeEntries() async {
+    try {
+      await _timeEntryBox.clear();
+      _logger.info('All time entries cleared');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to clear time entries', e, stackTrace);
+      rethrow;
+    }
+  }
+
   // Report operations
   Future<void> saveReport(Report report) async {
     try {

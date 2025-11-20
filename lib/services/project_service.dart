@@ -176,6 +176,21 @@ class ProjectService {
     return _enrichProjectWithLocalTime(project);
   }
 
+  // Reset all project times by clearing all time entries
+  Future<void> resetAllProjectTimes() async {
+    try {
+      _logger.info('Resetting all project times...');
+
+      // Clear all time entries from storage
+      await _storage.clearAllTimeEntries();
+
+      _logger.info('All project times reset successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to reset project times', e, stackTrace);
+      rethrow;
+    }
+  }
+
   // Helper: Enrich project with total time calculated from local time entries
   Project _enrichProjectWithLocalTime(Project project) {
     try {

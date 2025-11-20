@@ -126,6 +126,24 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
       rethrow;
     }
   }
+
+  // Reset all project times (clears all time entries)
+  Future<void> resetAllProjectTimes() async {
+    try {
+      _logger.info('Resetting all project times...');
+
+      // Clear all time entries from storage
+      await _projectService.resetAllProjectTimes();
+
+      // Reload projects to reflect zero times
+      await loadProjects();
+
+      _logger.info('All project times reset successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to reset all project times', e, stackTrace);
+      rethrow;
+    }
+  }
 }
 
 // Selected project provider
@@ -138,4 +156,19 @@ final activeProjectsProvider = Provider<List<Project>>((ref) {
   return projectsAsync.whenOrNull(
     data: (projects) => projects.where((p) => p.status == 'active').toList(),
   ) ?? [];
+});
+
+// Session total time provider (sum of all project times)
+final sessionTotalTimeProvider = Provider<Duration>((ref) {
+  final projectsAsync = ref.watch(projectsProvider);
+
+  return projectsAsync.whenOrNull(
+    data: (projects) {
+      Duration totalTime = Duration.zero;
+      for (final project in projects) {
+        totalTime += project.totalTime;
+      }
+      return totalTime;
+    },
+  ) ?? Duration.zero;
 });

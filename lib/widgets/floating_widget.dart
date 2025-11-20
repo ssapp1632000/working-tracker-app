@@ -9,6 +9,8 @@ import '../core/utils/date_time_utils.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/window_provider.dart';
+import '../providers/navigation_provider.dart';
+import '../screens/submission_form_screen.dart';
 import 'floating_widget_constants.dart';
 
 /// A floating widget that displays project timer information
@@ -389,13 +391,14 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     final projectsAsync = ref.watch(projectsProvider);
     final currentTimer = ref.watch(currentTimerProvider);
     final currentProject = ref.watch(selectedProjectProvider);
+    final sessionTotalTime = ref.watch(sessionTotalTimeProvider);
 
     // Extract projects list from async state (empty list if loading/error)
     final projects = projectsAsync.whenOrNull(data: (p) => p) ?? [];
 
     return Container(
       color: Colors.transparent, // Fully transparent background
-      child: _buildAnimatedContainer(projects, currentProject, currentTimer),
+      child: _buildAnimatedContainer(projects, currentProject, currentTimer, sessionTotalTime),
     );
   }
 
@@ -404,6 +407,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
+    Duration sessionTotalTime,
   ) {
     return MouseRegion(
       onEnter: (_) => _onMouseEnter(),
@@ -415,7 +419,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
           curve: Curves.easeOutCubic,
           width: _currentWidth,
           height: _getWidgetHeight(projects.length),
-          child: _buildMainContainer(projects, currentProject, currentTimer),
+          child: _buildMainContainer(projects, currentProject, currentTimer, sessionTotalTime),
         ),
       ),
     );
@@ -426,6 +430,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
+    Duration sessionTotalTime,
   ) {
     return ClipRect(
       child: Container(
@@ -472,7 +477,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildMainRow(projects, currentProject, currentTimer),
+                        _buildMainRow(projects, currentProject, currentTimer, sessionTotalTime),
                         if (_isExpanded) _buildProjectList(projects, currentTimer),
                       ],
                     ),
@@ -483,7 +488,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildMainRow(projects, currentProject, currentTimer),
+                    _buildMainRow(projects, currentProject, currentTimer, sessionTotalTime),
                     if (_isExpanded) _buildProjectList(projects, currentTimer),
                   ],
                 );
@@ -500,6 +505,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
+    Duration sessionTotalTime,
   ) {
     return ConstrainedBox(
       constraints: const BoxConstraints(
@@ -546,7 +552,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(width: FloatingWidgetConstants.iconTextSpacing),
-                              _buildProjectInfo(currentProject, currentTimer),
+                              _buildProjectInfo(currentProject, currentTimer, sessionTotalTime),
                               _buildDropdownArrow(projects),
                               _buildMaximizeButton(),
                             ],
@@ -573,59 +579,94 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   }
 
   /// Builds the project name and timer display
-  Widget _buildProjectInfo(dynamic currentProject, dynamic currentTimer) {
+  Widget _buildProjectInfo(dynamic currentProject, dynamic currentTimer, Duration sessionTotalTime) {
     return Flexible(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Project name
-          Text(
-            currentProject?.name ?? 'Select Project',
-            style: TextStyle(
-              color: currentProject == null
-                  ? Colors.grey[600]
-                  : Colors.black87,
-              fontSize: FloatingWidgetConstants.projectNameFontSize,
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-          SizedBox(height: FloatingWidgetConstants.nameTimerSpacing),
+          // Timer and project info
+          Flexible(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Project name
+                Text(
+                  currentProject?.name ?? 'Select Project',
+                  style: TextStyle(
+                    color: currentProject == null
+                        ? Colors.grey[600]
+                        : Colors.black87,
+                    fontSize: FloatingWidgetConstants.projectNameFontSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                SizedBox(height: FloatingWidgetConstants.nameTimerSpacing),
 
-          // Timer display
-          Text(
-            currentTimer != null
-                ? DateTimeUtils.formatDuration(currentTimer.actualDuration)
-                : '00:00:00',
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: FloatingWidgetConstants.timerFontSize,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace',
-              letterSpacing: FloatingWidgetConstants.timerLetterSpacing,
+                // Timer display - Shows session total time (sum of all projects)
+                Text(
+                  DateTimeUtils.formatDuration(sessionTotalTime),
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontSize: FloatingWidgetConstants.timerFontSize,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                    letterSpacing: FloatingWidgetConstants.timerLetterSpacing,
+                  ),
+                  overflow: TextOverflow.clip,
+                  maxLines: 1,
+                ),
+              ],
             ),
-            overflow: TextOverflow.clip,
-            maxLines: 1,
           ),
+
+          // Submit button (next to timer)
+          if (currentTimer != null) ...[
+            const SizedBox(width: 8),
+            _buildSubmitButton(),
+          ],
         ],
       ),
     );
   }
 
-  /// Builds the dropdown arrow button with rotation animation
+  /// Builds the submit button for session report
+  Widget _buildSubmitButton() {
+    return InkWell(
+      onTap: () async {
+        // Set navigation request for submission form
+        ref.read(navigationRequestProvider.notifier).requestSubmissionForm();
+        // Switch to main window - dashboard will handle navigation
+        await ref.read(windowModeProvider.notifier).switchToMain();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.green[50],
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(
+          Icons.send,
+          size: 16,
+          color: Colors.green[700],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the switch projects button
   Widget _buildDropdownArrow(List<dynamic> projects) {
     return GestureDetector(
       onTap: () => _toggleDropdown(projects.length),
-      child: AnimatedRotation(
-        turns: _isExpanded ? 0.5 : 0, // Rotate 180° when expanded
-        duration: FloatingWidgetConstants.animationDuration,
+      child: Container(
+        padding: const EdgeInsets.all(4),
         child: Icon(
-          Icons.arrow_drop_down,
+          Icons.swap_horiz, // Changed from arrow_drop_down to swap_horiz (switch icon)
           color: Colors.grey[700],
-          size: FloatingWidgetConstants.dropdownArrowSize,
+          size: 20,
         ),
       ),
     );

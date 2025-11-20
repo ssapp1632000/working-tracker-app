@@ -39,6 +39,9 @@ class CurrentTimerNotifier extends StateNotifier<TimeEntry?> {
         // Update state to trigger UI rebuild
         if (_timerService.currentEntry != null) {
           state = _timerService.currentEntry;
+
+          // Refresh project times to show real-time updates in project list
+          _ref.read(projectsProvider.notifier).refreshProjectTimes();
         }
       });
 

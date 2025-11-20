@@ -108,6 +108,22 @@ class Project extends HiveObject {
       parsedDeadline = null;
     }
 
+    // Parse total time safely - handle different formats from API
+    Duration parsedTotalTime = Duration.zero;
+    try {
+      // Try different possible field names and formats
+      if (json['totalTime'] != null) {
+        parsedTotalTime = Duration(seconds: (json['totalTime'] as num).toInt());
+      } else if (json['total_time'] != null) {
+        parsedTotalTime = Duration(seconds: (json['total_time'] as num).toInt());
+      } else if (json['TotalTime'] != null) {
+        parsedTotalTime = Duration(seconds: (json['TotalTime'] as num).toInt());
+      }
+    } catch (e) {
+      // If parsing fails, default to zero
+      parsedTotalTime = Duration.zero;
+    }
+
     return Project(
       id: id,
       name: name,
@@ -116,7 +132,7 @@ class Project extends HiveObject {
       createdAt: parsedCreatedAt ?? DateTime.now(),
       deadline: parsedDeadline,
       status: json['status'] as String? ?? 'active',
-      totalTime: Duration(seconds: json['totalTime'] as int? ?? 0),
+      totalTime: parsedTotalTime,
     );
   }
 

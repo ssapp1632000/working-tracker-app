@@ -40,6 +40,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final projectsAsync = ref.watch(projectsProvider);
     final currentTimer = ref.watch(currentTimerProvider);
     final selectedProject = ref.watch(selectedProjectProvider);
+    final isFloatingMode = ref.watch(windowModeProvider);
+
+    // Don't render dashboard when in floating mode to prevent AppBar overlay
+    if (isFloatingMode) {
+      return const SizedBox.shrink();
+    }
 
     return Scaffold(
       appBar: AppBar(

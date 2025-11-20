@@ -22,10 +22,12 @@ class ProjectService {
       // Fetch projects from API
       final projectsJson = await _api.getProjects();
 
-      // Convert JSON to Project objects
+      // Convert JSON to Project objects and calculate total time from local entries
       final projects = projectsJson.map((json) {
         try {
-          return Project.fromJson(json);
+          final project = Project.fromJson(json);
+          // Calculate total time from local time entries
+          return _enrichProjectWithLocalTime(project);
         } catch (e) {
           _logger.warning('Failed to parse project: $e');
           return null;
@@ -39,7 +41,8 @@ class ProjectService {
         final existingProjects = _storage.getAllProjects();
         if (existingProjects.isNotEmpty) {
           _logger.info('Loaded ${existingProjects.length} projects from storage');
-          return existingProjects;
+          // Enrich with local time entries
+          return existingProjects.map((p) => _enrichProjectWithLocalTime(p)).toList();
         }
 
         // If no storage, create mock projects
@@ -61,7 +64,8 @@ class ProjectService {
       final existingProjects = _storage.getAllProjects();
       if (existingProjects.isNotEmpty) {
         _logger.info('Using ${existingProjects.length} cached projects');
-        return existingProjects;
+        // Enrich with local time entries
+        return existingProjects.map((p) => _enrichProjectWithLocalTime(p)).toList();
       }
 
       // Last resort: mock data
@@ -164,6 +168,31 @@ class ProjectService {
     } catch (e, stackTrace) {
       _logger.error('Failed to sync projects', e, stackTrace);
       rethrow;
+    }
+  }
+
+  // Refresh a single project's time from local entries (public method)
+  Project refreshProjectTime(Project project) {
+    return _enrichProjectWithLocalTime(project);
+  }
+
+  // Helper: Enrich project with total time calculated from local time entries
+  Project _enrichProjectWithLocalTime(Project project) {
+    try {
+      // Get all time entries for this project from local storage
+      final timeEntries = _storage.getTimeEntriesByProject(project.id);
+
+      // Calculate total duration from all time entries
+      Duration totalTime = Duration.zero;
+      for (final entry in timeEntries) {
+        totalTime += entry.actualDuration;
+      }
+
+      // Return project with updated total time
+      return project.copyWith(totalTime: totalTime);
+    } catch (e) {
+      _logger.warning('Failed to calculate total time for project ${project.name}: $e');
+      return project; // Return original project if calculation fails
     }
   }
 

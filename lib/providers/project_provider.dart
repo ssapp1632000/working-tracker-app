@@ -38,9 +38,19 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
     }
   }
 
-  // Refresh projects
+  // Refresh projects (full reload from API)
   Future<void> refreshProjects() async {
     await loadProjects();
+  }
+
+  // Refresh project times from local time entries (lightweight, no API call)
+  void refreshProjectTimes() {
+    state = state.whenData((projects) {
+      // Recalculate total time for each project from local storage
+      return projects.map((project) {
+        return _projectService.refreshProjectTime(project);
+      }).toList();
+    });
   }
 
   // Get project by ID

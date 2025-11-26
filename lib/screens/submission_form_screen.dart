@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:window_manager/window_manager.dart';
 import '../core/extensions/context_extensions.dart';
 import '../core/utils/date_time_utils.dart';
 import '../models/project.dart';
@@ -121,6 +123,55 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
     setState(() {
       _projectTasks[projectId]![taskIndex].attachments.removeAt(attachmentIndex);
     });
+  }
+
+  Future<void> _takeScreenshot(String projectId, int taskIndex) async {
+    try {
+      // Create a unique filename with timestamp
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final tempDir = Directory.systemTemp;
+      final screenshotPath = '${tempDir.path}/screenshot_$timestamp.png';
+
+      // Minimize the window before taking screenshot
+      await windowManager.minimize();
+
+      // Wait a moment for the window to minimize
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Use macOS screencapture command with interactive selection mode
+      // -i: interactive mode (user selects area)
+      final result = await Process.run('screencapture', ['-i', screenshotPath]);
+
+      // Restore the window after screenshot
+      await windowManager.restore();
+      await windowManager.focus();
+
+      if (result.exitCode == 0) {
+        // Check if file was created (user might have cancelled)
+        final file = File(screenshotPath);
+        if (await file.exists()) {
+          setState(() {
+            _projectTasks[projectId]![taskIndex].attachments.add(screenshotPath);
+          });
+          if (mounted) {
+            context.showSuccessSnackBar('Screenshot captured');
+          }
+        }
+      } else {
+        // User cancelled the screenshot
+        if (mounted && result.exitCode != 1) {
+          context.showErrorSnackBar('Failed to capture screenshot');
+        }
+      }
+    } catch (e) {
+      // Make sure to restore window even if there's an error
+      await windowManager.restore();
+      await windowManager.focus();
+
+      if (mounted) {
+        context.showErrorSnackBar('Error taking screenshot: $e');
+      }
+    }
   }
 
   Future<void> _submitReport() async {
@@ -471,48 +522,190 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
           const SizedBox(height: 12),
 
-          // Attachments section
-          Row(
-            children: [
-              const Text(
-                'Attachments',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+          // Attachments section with drag and drop
+          _buildAttachmentsSection(projectId, taskIndex, taskData),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttachmentsSection(String projectId, int taskIndex, TaskFormData taskData) {
+    return DropTarget(
+      onDragDone: (details) {
+        final List<String> filePaths = [];
+        for (var file in details.files) {
+          filePaths.add(file.path);
+        }
+        if (filePaths.isNotEmpty) {
+          setState(() {
+            taskData.attachments.addAll(filePaths);
+          });
+        }
+      },
+      onDragEntered: (details) {
+        setState(() {
+          taskData.isDragging = true;
+        });
+      },
+      onDragExited: (details) {
+        setState(() {
+          taskData.isDragging = false;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: taskData.isDragging ? Colors.blue[50] : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: taskData.isDragging ? Colors.blue[400]! : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
+              children: [
+                const Text(
+                  'Attachments',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _takeScreenshot(projectId, taskIndex),
+                  icon: const Icon(Icons.screenshot, size: 16),
+                  label: const Text('Screenshot', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: () => _pickFiles(projectId, taskIndex),
+                  icon: const Icon(Icons.attach_file, size: 16),
+                  label: const Text('Add Files', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+
+            // Drop zone hint
+            if (taskData.attachments.isEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                decoration: BoxDecoration(
+                  color: taskData.isDragging ? Colors.blue[100] : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: taskData.isDragging ? Colors.blue[400]! : Colors.grey[300]!,
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      taskData.isDragging ? Icons.file_download : Icons.cloud_upload_outlined,
+                      size: 32,
+                      color: taskData.isDragging ? Colors.blue[600] : Colors.grey[500],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      taskData.isDragging ? 'Drop files here' : 'Drag & drop files here',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: taskData.isDragging ? Colors.blue[700] : Colors.grey[600],
+                        fontWeight: taskData.isDragging ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _pickFiles(projectId, taskIndex),
-                icon: const Icon(Icons.attach_file, size: 16),
-                label: const Text('Add Files', style: TextStyle(fontSize: 12)),
+            ],
+
+            // File previews
+            if (taskData.attachments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: taskData.attachments.length,
+                  itemBuilder: (context, attachmentIndex) {
+                    final path = taskData.attachments[attachmentIndex];
+                    final fileName = path.split(Platform.pathSeparator).last;
+                    final isImage = _isImageFile(path);
+
+                    return Container(
+                      width: 100,
+                      height: 100,
+                      margin: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          // Preview container
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey[300]!),
+                              color: Colors.grey[100],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(7),
+                              child: isImage
+                                  ? Image.file(
+                                      File(path),
+                                      fit: BoxFit.cover,
+                                      width: 100,
+                                      height: 100,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return _buildFileIcon(fileName);
+                                      },
+                                    )
+                                  : _buildFileIcon(fileName),
+                            ),
+                          ),
+                          // Delete button overlay
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeAttachment(projectId, taskIndex, attachmentIndex),
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: Colors.red[400],
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.2),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
-          ),
-
-          if (taskData.attachments.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: taskData.attachments.asMap().entries.map((entry) {
-                final attachmentIndex = entry.key;
-                final path = entry.value;
-                final fileName = path.split(Platform.pathSeparator).last;
-
-                return Chip(
-                  avatar: const Icon(Icons.insert_drive_file, size: 16),
-                  label: Text(
-                    fileName,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  deleteIcon: const Icon(Icons.close, size: 16),
-                  onDeleted: () => _removeAttachment(projectId, taskIndex, attachmentIndex),
-                );
-              }).toList(),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -523,16 +716,73 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
       (total, project) => total + project.totalTime,
     );
   }
+
+  bool _isImageFile(String path) {
+    final extension = path.toLowerCase().split('.').last;
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif'].contains(extension);
+  }
+
+  Widget _buildFileIcon(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    IconData iconData;
+    Color iconColor;
+
+    switch (extension) {
+      case 'pdf':
+        iconData = Icons.picture_as_pdf;
+        iconColor = Colors.red;
+        break;
+      case 'doc':
+      case 'docx':
+        iconData = Icons.description;
+        iconColor = Colors.blue;
+        break;
+      case 'xls':
+      case 'xlsx':
+        iconData = Icons.table_chart;
+        iconColor = Colors.green;
+        break;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        iconData = Icons.folder_zip;
+        iconColor = Colors.orange;
+        break;
+      default:
+        iconData = Icons.insert_drive_file;
+        iconColor = Colors.grey;
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(iconData, size: 32, color: iconColor),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            fileName,
+            style: const TextStyle(fontSize: 9),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class TaskFormData {
   final TextEditingController taskNameController;
   final TextEditingController taskDescController;
   final List<String> attachments;
+  bool isDragging;
 
   TaskFormData({
     required this.taskNameController,
     required this.taskDescController,
     required this.attachments,
+    this.isDragging = false,
   });
 }

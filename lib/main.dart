@@ -28,7 +28,9 @@ void main() async {
     logger.info('Environment variables loaded');
 
     // Initialize window manager for desktop
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    if (Platform.isWindows ||
+        Platform.isLinux ||
+        Platform.isMacOS) {
       await windowManager.ensureInitialized();
 
       WindowOptions windowOptions = const WindowOptions(
@@ -40,10 +42,13 @@ void main() async {
         title: AppConstants.appName,
       );
 
-      await windowManager.waitUntilReadyToShow(windowOptions, () async {
-        await windowManager.show();
-        await windowManager.focus();
-      });
+      await windowManager.waitUntilReadyToShow(
+        windowOptions,
+        () async {
+          await windowManager.show();
+          await windowManager.focus();
+        },
+      );
 
       logger.info('Window manager initialized');
     }
@@ -64,13 +69,13 @@ void main() async {
     logger.info('Email service initialized');
 
     // Run app
-    runApp(
-      const ProviderScope(
-        child: MyApp(),
-      ),
-    );
+    runApp(const ProviderScope(child: MyApp()));
   } catch (e, stackTrace) {
-    logger.error('Failed to start application', e, stackTrace);
+    logger.error(
+      'Failed to start application',
+      e,
+      stackTrace,
+    );
     rethrow;
   }
 }
@@ -94,7 +99,9 @@ class MyApp extends ConsumerWidget {
           : AppTheme.lightTheme,
       home: isFloatingMode
           ? const FloatingWidget()
-          : (isLoggedIn ? const DashboardScreen() : const EmailEntryScreen()),
+          : (isLoggedIn
+                ? const DashboardScreen()
+                : const EmailEntryScreen()),
     );
   }
 }

@@ -33,7 +33,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     super.dispose();
   }
 
-  /// Filters projects based on search query and sorts them with active project first
+  /// Filters projects based on search query and sorts them by recent activity
   List<Project> _filterProjects(
     List<Project> projects,
     String? activeProjectId,
@@ -54,19 +54,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }).toList();
     }
 
-    // Sort projects: active project first, then maintain original order for the rest
-    if (activeProjectId != null) {
-      // Separate active and non-active projects to maintain stable order
-      final activeProject = filtered
-          .where((p) => p.id == activeProjectId)
-          .toList();
-      final otherProjects = filtered
-          .where((p) => p.id != activeProjectId)
-          .toList();
+    // Sort projects: active project first, then by lastActiveAt (most recent first)
+    filtered.sort((a, b) {
+      // Active project always first
+      if (a.id == activeProjectId) return -1;
+      if (b.id == activeProjectId) return 1;
 
-      // Return with active project first, followed by others in original order
-      return [...activeProject, ...otherProjects];
-    }
+      // Then sort by lastActiveAt (most recent first)
+      final aLastActive = a.lastActiveAt;
+      final bLastActive = b.lastActiveAt;
+
+      if (aLastActive != null && bLastActive != null) {
+        return bLastActive.compareTo(aLastActive); // Descending order
+      }
+      if (aLastActive != null) return -1; // a has activity, b doesn't
+      if (bLastActive != null) return 1; // b has activity, a doesn't
+
+      // Neither has been worked on - sort by name
+      return a.name.compareTo(b.name);
+    });
 
     return filtered;
   }

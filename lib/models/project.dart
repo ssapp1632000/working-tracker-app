@@ -28,6 +28,9 @@ class Project extends HiveObject {
   @HiveField(7)
   final Duration totalTime;
 
+  @HiveField(8)
+  final DateTime? lastActiveAt;
+
   Project({
     required this.id,
     required this.name,
@@ -37,6 +40,7 @@ class Project extends HiveObject {
     this.deadline,
     this.status = 'active',
     this.totalTime = Duration.zero,
+    this.lastActiveAt,
   });
 
   // Copy with method for immutability
@@ -49,6 +53,7 @@ class Project extends HiveObject {
     DateTime? deadline,
     String? status,
     Duration? totalTime,
+    DateTime? lastActiveAt,
   }) {
     return Project(
       id: id ?? this.id,
@@ -59,6 +64,7 @@ class Project extends HiveObject {
       deadline: deadline ?? this.deadline,
       status: status ?? this.status,
       totalTime: totalTime ?? this.totalTime,
+      lastActiveAt: lastActiveAt ?? this.lastActiveAt,
     );
   }
 
@@ -73,6 +79,7 @@ class Project extends HiveObject {
       'deadline': deadline?.toIso8601String(),
       'status': status,
       'totalTime': totalTime.inSeconds,
+      'lastActiveAt': lastActiveAt?.toIso8601String(),
     };
   }
 
@@ -124,6 +131,18 @@ class Project extends HiveObject {
       parsedTotalTime = Duration.zero;
     }
 
+    // Parse lastActiveAt
+    DateTime? parsedLastActiveAt;
+    try {
+      if (json['lastActiveAt'] != null) {
+        parsedLastActiveAt = DateTime.parse(json['lastActiveAt'] as String);
+      } else if (json['last_active_at'] != null) {
+        parsedLastActiveAt = DateTime.parse(json['last_active_at'] as String);
+      }
+    } catch (e) {
+      parsedLastActiveAt = null;
+    }
+
     return Project(
       id: id,
       name: name,
@@ -133,6 +152,7 @@ class Project extends HiveObject {
       deadline: parsedDeadline,
       status: json['status'] as String? ?? 'active',
       totalTime: parsedTotalTime,
+      lastActiveAt: parsedLastActiveAt,
     );
   }
 

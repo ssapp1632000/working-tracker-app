@@ -71,6 +71,9 @@ dependencies:
   # Drag and drop for desktop
   desktop_drop: ^0.5.0
 
+  # Screenshot capture for desktop
+  screen_capturer: ^0.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

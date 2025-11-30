@@ -3,14 +3,17 @@ import '../services/window_service.dart';
 import '../services/logger_service.dart';
 
 // Window service provider
-final windowServiceProvider = Provider<WindowService>((ref) {
+final windowServiceProvider = Provider<WindowService>((
+  ref,
+) {
   return WindowService();
 });
 
 // Window mode state provider
-final windowModeProvider = StateNotifierProvider<WindowModeNotifier, bool>((ref) {
-  return WindowModeNotifier(ref);
-});
+final windowModeProvider =
+    StateNotifierProvider<WindowModeNotifier, bool>((ref) {
+      return WindowModeNotifier(ref);
+    });
 
 class WindowModeNotifier extends StateNotifier<bool> {
   final Ref _ref;
@@ -29,41 +32,24 @@ class WindowModeNotifier extends StateNotifier<bool> {
       _logger.info('Switching to floating mode...');
 
       // Configure window FIRST before changing UI state
-      // This ensures proper window size before Flutter renders
-      await _windowService.switchToFloatingMode();
 
-      // Poll the actual window size until it matches what we requested (60x80)
-      // This ensures the window has ACTUALLY resized before we trigger UI changes
-      bool sizeCorrect = false;
-      int attempts = 0;
-      const maxAttempts = 10; // Try for up to 500ms (10 * 50ms)
-
-      while (!sizeCorrect && attempts < maxAttempts) {
-        await Future.delayed(const Duration(milliseconds: 50));
-        final verifySize = await _windowService.getWindowSize();
-
-        _logger.info('Attempt ${attempts + 1} - Window size: ${verifySize.width}x${verifySize.height}');
-
-        // Check if size is correct (60x80 collapsed state)
-        if (verifySize.width <= 80 && verifySize.height >= 60) {
-          sizeCorrect = true;
-          _logger.info('Window size verified (${verifySize.width}x${verifySize.height}) - proceeding with UI update');
-        } else {
-          attempts++;
-          if (attempts >= maxAttempts) {
-            _logger.warning('Window did not resize to expected size after $maxAttempts attempts');
-            _logger.warning('Expected: ~60x80, Got: ${verifySize.width}x${verifySize.height}');
-          }
-        }
-      }
+      // Poll the actual window size until it matches what we requested (280x80)
+      // bool sizeCorrect = false;
+      // int attempts = 0;
+      // const maxAttempts = 10;
 
       // Then set state to trigger UI change
       state = true;
       _logger.info('Window mode: Floating');
     } catch (e, stackTrace) {
-      _logger.error('Failed to switch to floating mode', e, stackTrace);
-      state = false; // Revert on error
+      _logger.error(
+        'Failed to switch to floating mode',
+        e,
+        stackTrace,
+      );
+      state = false;
     }
+    await _windowService.switchToFloatingMode();
   }
 
   // Switch to main mode
@@ -72,30 +58,40 @@ class WindowModeNotifier extends StateNotifier<bool> {
       _logger.info('Switching to main mode...');
 
       // Configure window FIRST to resize before UI change
-      // This prevents overflow when dashboard tries to render in 60x80 window
       await _windowService.switchToMainMode();
 
       // Poll the actual window size until it matches what we requested (800x600)
-      // This ensures the window has ACTUALLY resized before we trigger UI changes
       bool sizeCorrect = false;
       int attempts = 0;
-      const maxAttempts = 10; // Try for up to 500ms (10 * 50ms)
+      const maxAttempts = 10;
 
       while (!sizeCorrect && attempts < maxAttempts) {
-        await Future.delayed(const Duration(milliseconds: 50));
-        final verifySize = await _windowService.getWindowSize();
+        await Future.delayed(
+          const Duration(milliseconds: 50),
+        );
+        final verifySize = await _windowService
+            .getWindowSize();
 
-        _logger.info('Attempt ${attempts + 1} - Window size: ${verifySize.width}x${verifySize.height}');
+        _logger.info(
+          'Attempt ${attempts + 1} - Window size: ${verifySize.width}x${verifySize.height}',
+        );
 
         // Check if size is correct (at least 600x400, should be 800x600)
-        if (verifySize.width >= 600 && verifySize.height >= 400) {
+        if (verifySize.width >= 600 &&
+            verifySize.height >= 400) {
           sizeCorrect = true;
-          _logger.info('Window size verified (${verifySize.width}x${verifySize.height}) - proceeding with UI update');
+          _logger.info(
+            'Window size verified (${verifySize.width}x${verifySize.height}) - proceeding with UI update',
+          );
         } else {
           attempts++;
           if (attempts >= maxAttempts) {
-            _logger.warning('Window did not resize to expected size after $maxAttempts attempts');
-            _logger.warning('Expected: at least 600x400, Got: ${verifySize.width}x${verifySize.height}');
+            _logger.warning(
+              'Window did not resize to expected size after $maxAttempts attempts',
+            );
+            _logger.warning(
+              'Expected: at least 600x400, Got: ${verifySize.width}x${verifySize.height}',
+            );
           }
         }
       }
@@ -104,8 +100,12 @@ class WindowModeNotifier extends StateNotifier<bool> {
       state = false;
       _logger.info('Window mode: Main');
     } catch (e, stackTrace) {
-      _logger.error('Failed to switch to main mode', e, stackTrace);
-      state = true; // Revert on error
+      _logger.error(
+        'Failed to switch to main mode',
+        e,
+        stackTrace,
+      );
+      state = true;
     }
   }
 

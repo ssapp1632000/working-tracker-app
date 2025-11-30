@@ -191,20 +191,29 @@ class ProjectService {
     }
   }
 
-  // Helper: Enrich project with total time calculated from local time entries
+  // Helper: Enrich project with total time and lastActiveAt from local time entries
   Project _enrichProjectWithLocalTime(Project project) {
     try {
       // Get all time entries for this project from local storage
       final timeEntries = _storage.getTimeEntriesByProject(project.id);
 
-      // Calculate total duration from all time entries
+      // Calculate total duration and find most recent startTime
       Duration totalTime = Duration.zero;
+      DateTime? mostRecentStart;
+
       for (final entry in timeEntries) {
         totalTime += entry.actualDuration;
+        // Track most recent startTime for backfilling lastActiveAt
+        if (mostRecentStart == null || entry.startTime.isAfter(mostRecentStart)) {
+          mostRecentStart = entry.startTime;
+        }
       }
 
-      // Return project with updated total time
-      return project.copyWith(totalTime: totalTime);
+      // Return project with updated total time and lastActiveAt (if not already set)
+      return project.copyWith(
+        totalTime: totalTime,
+        lastActiveAt: project.lastActiveAt ?? mostRecentStart,
+      );
     } catch (e) {
       _logger.warning('Failed to calculate total time for project ${project.name}: $e');
       return project; // Return original project if calculation fails

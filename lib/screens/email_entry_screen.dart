@@ -12,10 +12,12 @@ class EmailEntryScreen extends ConsumerStatefulWidget {
   const EmailEntryScreen({super.key});
 
   @override
-  ConsumerState<EmailEntryScreen> createState() => _EmailEntryScreenState();
+  ConsumerState<EmailEntryScreen> createState() =>
+      _EmailEntryScreenState();
 }
 
-class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
+class _EmailEntryScreenState
+    extends ConsumerState<EmailEntryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
@@ -40,7 +42,9 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
 
     try {
       // Send OTP via auth provider
-      final success = await ref.read(currentUserProvider.notifier).sendOTP(email);
+      final success = await ref
+          .read(currentUserProvider.notifier)
+          .sendOTP(email);
 
       if (!mounted) return;
 
@@ -48,7 +52,9 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('OTP sent to your email. Check your inbox.'),
+            content: Text(
+              'OTP sent to your email. Check your inbox.',
+            ),
             backgroundColor: AppTheme.successColor,
             duration: Duration(seconds: 3),
           ),
@@ -57,7 +63,8 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
         // Navigate to OTP verification screen
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => OTPVerificationScreen(email: email),
+            builder: (context) =>
+                OTPVerificationScreen(email: email),
           ),
         );
       }
@@ -83,7 +90,9 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to send OTP: ${e.toString()}'),
+          content: Text(
+            'Failed to send OTP: ${e.toString()}',
+          ),
           backgroundColor: AppTheme.errorColor,
           duration: const Duration(seconds: 4),
         ),
@@ -105,7 +114,9 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: const BoxConstraints(
+              maxWidth: 400,
+            ),
             child: Card(
               elevation: 4,
               shape: RoundedRectangleBorder(
@@ -117,12 +128,16 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.stretch,
                     children: [
                       // Title
                       Text(
                         'Welcome',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
                         textAlign: TextAlign.center,
@@ -132,7 +147,10 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
                       // Subtitle
                       Text(
                         'Enter your email to receive a login code',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
                               color: AppTheme.textSecondary,
                             ),
                         textAlign: TextAlign.center,
@@ -142,15 +160,25 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
                       // Email Field
                       TextFormField(
                         controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.done,
+                        keyboardType:
+                            TextInputType.emailAddress,
+                        textInputAction:
+                            TextInputAction.done,
                         enabled: !_isLoading,
                         decoration: InputDecoration(
                           labelText: 'Email Address',
-                          hintText: 'your.email@example.com',
-                          prefixIcon: const Icon(Icons.email_outlined),
+                          hintText:
+                              'your.email@example.com',
+                          hintStyle: const TextStyle(
+                            color: AppTheme.textHint,
+                            fontSize: 14,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.email_outlined,
+                          ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius:
+                                BorderRadius.circular(12),
                           ),
                           filled: true,
                           fillColor: AppTheme.surfaceColor,
@@ -166,21 +194,25 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
 
                       // Send OTP Button
                       GradientButton(
-                        onPressed: _isLoading ? null : _handleSendOTP,
+                        onPressed: _isLoading
+                            ? null
+                            : _handleSendOTP,
                         child: _isLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
+                                child:
+                                    CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
                               )
                             : const Text(
                                 'Send Login Code',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight:
+                                      FontWeight.bold,
                                 ),
                               ),
                       ),
@@ -189,7 +221,10 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
                       // Info Text
                       Text(
                         'A 6-digit code will be sent to your email',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
                               color: AppTheme.textSecondary,
                             ),
                         textAlign: TextAlign.center,

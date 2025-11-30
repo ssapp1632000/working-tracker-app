@@ -5,7 +5,8 @@ import 'package:window_manager/window_manager.dart';
 import 'logger_service.dart';
 
 class WindowService {
-  static final WindowService _instance = WindowService._internal();
+  static final WindowService _instance =
+      WindowService._internal();
   factory WindowService() => _instance;
 
   final _logger = LoggerService();
@@ -38,14 +39,21 @@ class WindowService {
         title: 'Work Tracker',
       );
 
-      await windowManager.waitUntilReadyToShow(windowOptions, () async {
-        await windowManager.show();
-        await windowManager.focus();
-      });
+      await windowManager.waitUntilReadyToShow(
+        windowOptions,
+        () async {
+          await windowManager.show();
+          await windowManager.focus();
+        },
+      );
 
       _logger.info('Main window initialized');
     } catch (e, stackTrace) {
-      _logger.error('Failed to initialize main window', e, stackTrace);
+      _logger.error(
+        'Failed to initialize main window',
+        e,
+        stackTrace,
+      );
     }
   }
 
@@ -63,47 +71,68 @@ class WindowService {
       await windowManager.setSkipTaskbar(true);
 
       // Small delay to let properties settle
-      await Future.delayed(const Duration(milliseconds: 150));
+      await Future.delayed(
+        const Duration(milliseconds: 150),
+      );
 
-      // Set minimum size to 60x80 (collapsed width)
+      // Set minimum size to 280x80
       _logger.info('Setting minimum size...');
-      await windowManager.setMinimumSize(const Size(60, 80));
+      await windowManager.setMinimumSize(
+        const Size(280, 80),
+      );
 
       // Another small delay
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(
+        const Duration(milliseconds: 100),
+      );
 
-      // Window starts at 60px wide (collapsed state)
-      // It will expand to 280px when user hovers
-      _logger.info('Resizing window to 60x80 (collapsed)...');
-      await windowManager.setSize(const Size(60, 80));
+      // Window size 280x80
+      _logger.info(
+        'Resizing window to 280x80...',
+      );
+      await windowManager.setSize(const Size(280, 80));
 
       // Wait for window manager to actually apply the size
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(
+        const Duration(milliseconds: 100),
+      );
 
       // Verify the size was set correctly
       final currentSize = await windowManager.getSize();
-      _logger.info('Window size after setSize: ${currentSize.width}x${currentSize.height}');
+      _logger.info(
+        'Window size after setSize: ${currentSize.width}x${currentSize.height}',
+      );
 
       // If size is incorrect, try multiple times to ensure it sticks
       if (currentSize.height < 80) {
-        _logger.warning('Window height is ${currentSize.height}, expected 80. Retrying...');
+        _logger.warning(
+          'Window height is ${currentSize.height}, expected 80. Retrying...',
+        );
 
         // Try setting it 2 more times with increasing delays
         for (int i = 0; i < 2; i++) {
-          await windowManager.setSize(const Size(60, 80));
-          await Future.delayed(const Duration(milliseconds: 150));
+          await windowManager.setSize(const Size(280, 80));
+          await Future.delayed(
+            const Duration(milliseconds: 150),
+          );
 
           final checkSize = await windowManager.getSize();
-          _logger.info('Retry ${i + 1} - Window size: ${checkSize.width}x${checkSize.height}');
+          _logger.info(
+            'Retry ${i + 1} - Window size: ${checkSize.width}x${checkSize.height}',
+          );
 
           if (checkSize.height >= 80) {
-            _logger.info('Window size correction successful');
+            _logger.info(
+              'Window size correction successful',
+            );
             break;
           }
         }
 
         final finalSize = await windowManager.getSize();
-        _logger.info('Final window size: ${finalSize.width}x${finalSize.height}');
+        _logger.info(
+          'Final window size: ${finalSize.width}x${finalSize.height}',
+        );
       }
 
       // Position window at the RIGHT edge of screen
@@ -111,7 +140,8 @@ class WindowService {
         _logger.info('Positioning window...');
 
         // Get primary display to calculate right edge position
-        final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+        final primaryDisplay = await screenRetriever
+            .getPrimaryDisplay();
         final screenWidth = primaryDisplay.size.width;
         final screenHeight = primaryDisplay.size.height;
 
@@ -120,12 +150,18 @@ class WindowService {
         final x = screenWidth - currentSize.width;
         final y = (screenHeight - currentSize.height) / 2;
 
-        _logger.info('Positioning ${currentSize.width}px window at ($x, $y) - right edge of ${screenWidth}px screen');
+        _logger.info(
+          'Positioning ${currentSize.width}px window at ($x, $y) - right edge of ${screenWidth}px screen',
+        );
         await windowManager.setPosition(Offset(x, y));
       } catch (e) {
-        _logger.warning('Could not set window position: $e');
+        _logger.warning(
+          'Could not set window position: $e',
+        );
         // Fallback to fixed position if positioning fails
-        await windowManager.setPosition(const Offset(1860, 300));
+        await windowManager.setPosition(
+          const Offset(1860, 300),
+        );
       }
 
       // Set frameless mode for clean look
@@ -133,12 +169,18 @@ class WindowService {
         _logger.info('Setting frameless mode...');
 
         // Set background to transparent BEFORE frameless mode
-        await windowManager.setBackgroundColor(Colors.transparent);
-        _logger.info('Set window background to transparent');
+        await windowManager.setBackgroundColor(
+          Colors.transparent,
+        );
+        _logger.info(
+          'Set window background to transparent',
+        );
 
         // Disable window shadow for better transparency on macOS
         await windowManager.setHasShadow(false);
-        _logger.info('Disabled window shadow for transparency');
+        _logger.info(
+          'Disabled window shadow for transparency',
+        );
 
         await windowManager.setAsFrameless();
 
@@ -146,41 +188,69 @@ class WindowService {
         // Without this, clicking might cause crashes in frameless mode
         await windowManager.setIgnoreMouseEvents(false);
 
-        _logger.info('Frameless mode configured with mouse events enabled');
+        _logger.info(
+          'Frameless mode configured with mouse events enabled',
+        );
 
         // CRITICAL: On macOS, setAsFrameless() removes the title bar which reduces
         // the window height. We need to compensate by resizing after frameless is set.
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(
+          const Duration(milliseconds: 50),
+        );
 
-        final sizeAfterFrameless = await windowManager.getSize();
-        _logger.info('Size after frameless: ${sizeAfterFrameless.width}x${sizeAfterFrameless.height}');
+        final sizeAfterFrameless = await windowManager
+            .getSize();
+        _logger.info(
+          'Size after frameless: ${sizeAfterFrameless.width}x${sizeAfterFrameless.height}',
+        );
 
         if (sizeAfterFrameless.height < 80) {
-          _logger.info('Compensating for frameless height loss...');
-          await windowManager.setSize(const Size(60, 80));
-          await Future.delayed(const Duration(milliseconds: 100));
+          _logger.info(
+            'Compensating for frameless height loss...',
+          );
+          await windowManager.setSize(const Size(280, 80));
+          await Future.delayed(
+            const Duration(milliseconds: 100),
+          );
 
-          final compensatedSize = await windowManager.getSize();
-          _logger.info('Size after compensation: ${compensatedSize.width}x${compensatedSize.height}');
+          final compensatedSize = await windowManager
+              .getSize();
+          _logger.info(
+            'Size after compensation: ${compensatedSize.width}x${compensatedSize.height}',
+          );
         }
       } catch (e) {
         _logger.warning('Could not set frameless mode: $e');
       }
 
-      _logger.info('Window configured for floating mode successfully');
+      _logger.info(
+        'Window configured for floating mode successfully',
+      );
 
       // Final verification and correction after all operations
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(
+        const Duration(milliseconds: 100),
+      );
       final verifySize = await windowManager.getSize();
-      _logger.info('Final verification - Window size: ${verifySize.width}x${verifySize.height}');
+      _logger.info(
+        'Final verification - Window size: ${verifySize.width}x${verifySize.height}',
+      );
 
       if (verifySize.height < 80) {
-        _logger.warning('Final size check failed, forcing size one more time');
-        await windowManager.setSize(const Size(60, 80));
-        await Future.delayed(const Duration(milliseconds: 150));
+        _logger.warning(
+          'Final size check failed, forcing size one more time',
+        );
+        await windowManager.setSize(const Size(280, 80));
+        await Future.delayed(
+          const Duration(milliseconds: 150),
+        );
       }
     } catch (e, stackTrace) {
-      _logger.error('Failed to configure floating mode', e, stackTrace);
+      _logger.error(
+        'Failed to configure floating mode',
+        e,
+        stackTrace,
+      );
       _isFloatingMode = false;
       rethrow;
     }
@@ -195,14 +265,20 @@ class WindowService {
       _logger.info('Configuring main mode...');
 
       // Restore minimum size
-      await windowManager.setMinimumSize(const Size(600, 400));
+      await windowManager.setMinimumSize(
+        const Size(600, 400),
+      );
 
       // Small delay to let UI update
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(
+        const Duration(milliseconds: 100),
+      );
 
       // Restore window frame (remove frameless mode)
       try {
-        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        await windowManager.setTitleBarStyle(
+          TitleBarStyle.normal,
+        );
       } catch (e) {
         _logger.warning('Could not restore title bar: $e');
       }
@@ -215,7 +291,11 @@ class WindowService {
 
       _logger.info('Window configured for main mode');
     } catch (e, stackTrace) {
-      _logger.error('Failed to configure main mode', e, stackTrace);
+      _logger.error(
+        'Failed to configure main mode',
+        e,
+        stackTrace,
+      );
       _isFloatingMode = true;
       rethrow;
     }
@@ -232,6 +312,8 @@ class WindowService {
 
   // Check if running on desktop
   bool _isDesktop() {
-    return Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    return Platform.isWindows ||
+        Platform.isLinux ||
+        Platform.isMacOS;
   }
 }

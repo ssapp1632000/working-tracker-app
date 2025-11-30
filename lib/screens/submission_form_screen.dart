@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:screen_capturer/screen_capturer.dart';
 import '../core/extensions/context_extensions.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
@@ -22,12 +23,15 @@ class SubmissionFormScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<SubmissionFormScreen> createState() => _SubmissionFormScreenState();
+  ConsumerState<SubmissionFormScreen> createState() =>
+      _SubmissionFormScreenState();
 }
 
-class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
+class _SubmissionFormScreenState
+    extends ConsumerState<SubmissionFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _reportSubmissionService = ReportSubmissionService();
+  final _reportSubmissionService =
+      ReportSubmissionService();
 
   // Map of project ID to list of tasks for that project
   late Map<String, List<TaskFormData>> _projectTasks;
@@ -43,7 +47,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
   void _initializeFormData() {
     _projectTasks = {};
     // Initialize with one task per project that has time tracked
-    for (var project in widget.projects.where((p) => p.totalTime.inSeconds > 0)) {
+    for (var project in widget.projects.where(
+      (p) => p.totalTime.inSeconds > 0,
+    )) {
       _projectTasks[project.id] = [
         TaskFormData(
           taskNameController: TextEditingController(),
@@ -80,22 +86,31 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
   void _removeTask(String projectId, int taskIndex) {
     if (_projectTasks[projectId]!.length <= 1) {
-      context.showErrorSnackBar('Each project must have at least one task');
+      context.showErrorSnackBar(
+        'Each project must have at least one task',
+      );
       return;
     }
 
     setState(() {
-      final task = _projectTasks[projectId]!.removeAt(taskIndex);
+      final task = _projectTasks[projectId]!.removeAt(
+        taskIndex,
+      );
       task.taskNameController.dispose();
       task.taskDescController.dispose();
     });
   }
 
-  Future<void> _pickFiles(String projectId, int taskIndex) async {
+  Future<void> _pickFiles(
+    String projectId,
+    int taskIndex,
+  ) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      FilePickerResult?
+      result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        type: FileType.any, // Changed from custom to any for better compatibility
+        type: FileType
+            .any, // Changed from custom to any for better compatibility
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -110,59 +125,74 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
         if (filePaths.isNotEmpty) {
           setState(() {
-            _projectTasks[projectId]![taskIndex].attachments.addAll(filePaths);
+            _projectTasks[projectId]![taskIndex].attachments
+                .addAll(filePaths);
           });
         }
       }
     } catch (e) {
       if (mounted) {
-        context.showErrorSnackBar('Error picking files: $e');
+        context.showErrorSnackBar(
+          'Error picking files: $e',
+        );
       }
     }
   }
 
-  void _removeAttachment(String projectId, int taskIndex, int attachmentIndex) {
+  void _removeAttachment(
+    String projectId,
+    int taskIndex,
+    int attachmentIndex,
+  ) {
     setState(() {
-      _projectTasks[projectId]![taskIndex].attachments.removeAt(attachmentIndex);
+      _projectTasks[projectId]![taskIndex].attachments
+          .removeAt(attachmentIndex);
     });
   }
 
-  Future<void> _takeScreenshot(String projectId, int taskIndex) async {
+  Future<void> _takeScreenshot(
+    String projectId,
+    int taskIndex,
+  ) async {
     try {
-      // Create a unique filename with timestamp
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final tempDir = Directory.systemTemp;
-      final screenshotPath = '${tempDir.path}/screenshot_$timestamp.png';
-
       // Minimize the window before taking screenshot
       await windowManager.minimize();
 
       // Wait a moment for the window to minimize
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(
+        const Duration(milliseconds: 300),
+      );
 
-      // Use macOS screencapture command with interactive selection mode
-      // -i: interactive mode (user selects area)
-      final result = await Process.run('screencapture', ['-i', screenshotPath]);
+      // Use screen_capturer for cross-platform support (Windows, macOS, Linux)
+      CapturedData? capturedData = await screenCapturer
+          .capture(
+            mode: CaptureMode
+                .region, // Interactive region selection
+          );
 
       // Restore the window after screenshot
       await windowManager.restore();
       await windowManager.focus();
 
-      if (result.exitCode == 0) {
-        // Check if file was created (user might have cancelled)
+      if (capturedData != null &&
+          capturedData.imageBytes != null) {
+        // Save to temp file
+        final timestamp =
+            DateTime.now().millisecondsSinceEpoch;
+        final tempDir = Directory.systemTemp;
+        final screenshotPath =
+            '${tempDir.path}/screenshot_$timestamp.png';
         final file = File(screenshotPath);
-        if (await file.exists()) {
-          setState(() {
-            _projectTasks[projectId]![taskIndex].attachments.add(screenshotPath);
-          });
-          if (mounted) {
-            context.showSuccessSnackBar('Screenshot captured');
-          }
-        }
-      } else {
-        // User cancelled the screenshot
-        if (mounted && result.exitCode != 1) {
-          context.showErrorSnackBar('Failed to capture screenshot');
+        await file.writeAsBytes(capturedData.imageBytes!);
+
+        setState(() {
+          _projectTasks[projectId]![taskIndex].attachments
+              .add(screenshotPath);
+        });
+        if (mounted) {
+          context.showSuccessSnackBar(
+            'Screenshot captured',
+          );
         }
       }
     } catch (e) {
@@ -171,14 +201,18 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
       await windowManager.focus();
 
       if (mounted) {
-        context.showErrorSnackBar('Error taking screenshot: $e');
+        context.showErrorSnackBar(
+          'Error taking screenshot: $e',
+        );
       }
     }
   }
 
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) {
-      context.showErrorSnackBar('Please fill in all required fields');
+      context.showErrorSnackBar(
+        'Please fill in all required fields',
+      );
       return;
     }
 
@@ -186,7 +220,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
     bool hasTaskName = false;
     for (var tasks in _projectTasks.values) {
       for (var task in tasks) {
-        if (task.taskNameController.text.trim().isNotEmpty) {
+        if (task.taskNameController.text
+            .trim()
+            .isNotEmpty) {
           hasTaskName = true;
           break;
         }
@@ -195,7 +231,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
     }
 
     if (!hasTaskName) {
-      context.showErrorSnackBar('Please provide at least one task name');
+      context.showErrorSnackBar(
+        'Please provide at least one task name',
+      );
       return;
     }
 
@@ -212,14 +250,20 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
       // Create task submissions - flatten the map
       final List<TaskSubmission> allTasks = [];
 
-      for (var project in widget.projects.where((p) => p.totalTime.inSeconds > 0)) {
+      for (var project in widget.projects.where(
+        (p) => p.totalTime.inSeconds > 0,
+      )) {
         final tasks = _projectTasks[project.id] ?? [];
         for (var taskData in tasks) {
           allTasks.add(
             TaskSubmission(
               projectName: project.name,
-              taskName: taskData.taskNameController.text.trim(),
-              taskDescription: taskData.taskDescController.text.trim(),
+              taskName: taskData.taskNameController.text
+                  .trim(),
+              taskDescription: taskData
+                  .taskDescController
+                  .text
+                  .trim(),
               attachmentPaths: taskData.attachments,
             ),
           );
@@ -235,19 +279,28 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
       );
 
       // Submit report
-      final result = await _reportSubmissionService.submitReport(report);
+      final result = await _reportSubmissionService
+          .submitReport(report);
 
       if (mounted) {
         if (result['success'] == true) {
-          context.showSuccessSnackBar('Report submitted successfully!');
-          Navigator.of(context).pop(true); // Return true to indicate success
+          context.showSuccessSnackBar(
+            'Report submitted successfully!',
+          );
+          Navigator.of(
+            context,
+          ).pop(true); // Return true to indicate success
         } else {
-          context.showErrorSnackBar(result['message'] ?? 'Failed to submit report');
+          context.showErrorSnackBar(
+            result['message'] ?? 'Failed to submit report',
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        context.showErrorSnackBar('Error submitting report: $e');
+        context.showErrorSnackBar(
+          'Error submitting report: $e',
+        );
       }
     } finally {
       if (mounted) {
@@ -260,7 +313,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final projectsWithTime = widget.projects.where((p) => p.totalTime.inSeconds > 0).toList();
+    final projectsWithTime = widget.projects
+        .where((p) => p.totalTime.inSeconds > 0)
+        .toList();
 
     if (projectsWithTime.isEmpty) {
       return Scaffold(
@@ -271,11 +326,18 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.timer_off, size: 64, color: AppTheme.textSecondary),
+              Icon(
+                Icons.timer_off,
+                size: 64,
+                color: AppTheme.textSecondary,
+              ),
               const SizedBox(height: 16),
               Text(
                 'No project time to submit',
-                style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
+                style: TextStyle(
+                  fontSize: 18,
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ],
           ),
@@ -295,14 +357,20 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
             // Summary header
             Container(
               padding: const EdgeInsets.all(16),
-              color: context.colorScheme.primary.withValues(alpha: 0.1),
+              color: context.colorScheme.primary.withValues(
+                alpha: 0.1,
+              ),
               child: Row(
                 children: [
-                  Icon(Icons.assessment, color: context.colorScheme.primary),
+                  Icon(
+                    Icons.assessment,
+                    color: context.colorScheme.primary,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Session Summary',
@@ -332,7 +400,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                 padding: const EdgeInsets.all(16),
                 itemCount: projectsWithTime.length,
                 itemBuilder: (context, projectIndex) {
-                  return _buildProjectCard(projectsWithTime[projectIndex]);
+                  return _buildProjectCard(
+                    projectsWithTime[projectIndex],
+                  );
                 },
               ),
             ),
@@ -344,7 +414,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                 color: AppTheme.surfaceColor,
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.textPrimary.withValues(alpha: 0.1),
+                    color: AppTheme.textPrimary.withValues(
+                      alpha: 0.1,
+                    ),
                     blurRadius: 8,
                     offset: const Offset(0, -2),
                   ),
@@ -354,9 +426,13 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: GradientButtonWithIcon(
-                    onPressed: _isSubmitting ? null : _submitReport,
+                    onPressed: _isSubmitting
+                        ? null
+                        : _submitReport,
                     icon: Icons.send,
-                    label: _isSubmitting ? 'Submitting...' : 'Submit Report',
+                    label: _isSubmitting
+                        ? 'Submitting...'
+                        : 'Submit Report',
                     isLoading: _isSubmitting,
                   ),
                 ),
@@ -390,7 +466,8 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       Text(
                         project.name,
@@ -417,7 +494,8 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add Task'),
                   style: TextButton.styleFrom(
-                    foregroundColor: context.colorScheme.primary,
+                    foregroundColor:
+                        context.colorScheme.primary,
                   ),
                 ),
               ],
@@ -429,7 +507,12 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
             ...tasks.asMap().entries.map((entry) {
               final taskIndex = entry.key;
               final taskData = entry.value;
-              return _buildTaskForm(project.id, taskIndex, taskData, tasks.length);
+              return _buildTaskForm(
+                project.id,
+                taskIndex,
+                taskData,
+                tasks.length,
+              );
             }),
           ],
         ),
@@ -437,7 +520,12 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
     );
   }
 
-  Widget _buildTaskForm(String projectId, int taskIndex, TaskFormData taskData, int totalTasks) {
+  Widget _buildTaskForm(
+    String projectId,
+    int taskIndex,
+    TaskFormData taskData,
+    int totalTasks,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
@@ -450,33 +538,46 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Task header with remove button
-          Row(
-            children: [
-              Text(
-                'Task ${taskIndex + 1}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              if (totalTasks > 1)
-                IconButton(
-                  onPressed: () => _removeTask(projectId, taskIndex),
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  color: AppTheme.errorColor,
-                  tooltip: 'Remove Task',
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          // Row(
+          //   children: [
+          //     Text(
+          //       'Task ${taskIndex + 1}',
+          //       style: const TextStyle(
+          //         fontSize: 14,
+          //         fontWeight: FontWeight.w600,
+          //       ),
+          //     ),
+          //     const Spacer(),
+          //     if (totalTasks > 1)
+          //       IconButton(
+          //         onPressed: () =>
+          //             _removeTask(projectId, taskIndex),
+          //         icon: const Icon(
+          //           Icons.delete_outline,
+          //           size: 20,
+          //         ),
+          //         color: AppTheme.errorColor,
+          //         tooltip: 'Remove Task',
+          //       ),
+          //   ],
+          // ),
+          // const SizedBox(height: 12),
 
           // Task name field
           TextFormField(
             controller: taskData.taskNameController,
             decoration: const InputDecoration(
-              labelText: 'Task Name *',
-              hintText: 'e.g., Design Review, Implementation',
+              labelText: 'Task Name',
+              labelStyle: const TextStyle(
+                color: AppTheme.textHint,
+                fontSize: 14,
+              ),
+              hintText:
+                  'e.g., Design Review, Implementation',
+              hintStyle: const TextStyle(
+                color: AppTheme.textHint,
+                fontSize: 14,
+              ),
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.task_alt),
               filled: true,
@@ -497,7 +598,15 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
             controller: taskData.taskDescController,
             decoration: const InputDecoration(
               labelText: 'Task Description (Optional)',
+              labelStyle: const TextStyle(
+                color: AppTheme.textHint,
+                fontSize: 14,
+              ),
               hintText: 'Describe what you worked on...',
+              hintStyle: const TextStyle(
+                color: AppTheme.textHint,
+                fontSize: 14,
+              ),
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.description),
               filled: true,
@@ -509,13 +618,21 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
           const SizedBox(height: 12),
 
           // Attachments section with drag and drop
-          _buildAttachmentsSection(projectId, taskIndex, taskData),
+          _buildAttachmentsSection(
+            projectId,
+            taskIndex,
+            taskData,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildAttachmentsSection(String projectId, int taskIndex, TaskFormData taskData) {
+  Widget _buildAttachmentsSection(
+    String projectId,
+    int taskIndex,
+    TaskFormData taskData,
+  ) {
     return DropTarget(
       onDragDone: (details) {
         final List<String> filePaths = [];
@@ -542,10 +659,14 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: taskData.isDragging ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.transparent,
+          color: taskData.isDragging
+              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: taskData.isDragging ? AppTheme.primaryColor : Colors.transparent,
+            color: taskData.isDragging
+                ? AppTheme.primaryColor
+                : Colors.transparent,
             width: 2,
           ),
         ),
@@ -564,15 +685,29 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                 ),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: () => _takeScreenshot(projectId, taskIndex),
-                  icon: const Icon(Icons.screenshot, size: 16),
-                  label: const Text('Screenshot', style: TextStyle(fontSize: 12)),
+                  onPressed: () =>
+                      _takeScreenshot(projectId, taskIndex),
+                  icon: const Icon(
+                    Icons.screenshot,
+                    size: 16,
+                  ),
+                  label: const Text(
+                    'Screenshot',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
                 const SizedBox(width: 4),
                 TextButton.icon(
-                  onPressed: () => _pickFiles(projectId, taskIndex),
-                  icon: const Icon(Icons.attach_file, size: 16),
-                  label: const Text('Add Files', style: TextStyle(fontSize: 12)),
+                  onPressed: () =>
+                      _pickFiles(projectId, taskIndex),
+                  icon: const Icon(
+                    Icons.attach_file,
+                    size: 16,
+                  ),
+                  label: const Text(
+                    'Add Files',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
               ],
             ),
@@ -582,29 +717,47 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 24,
+                ),
                 decoration: BoxDecoration(
-                  color: taskData.isDragging ? AppTheme.primaryColor.withValues(alpha: 0.2) : AppTheme.backgroundColor,
+                  color: taskData.isDragging
+                      ? AppTheme.primaryColor.withValues(
+                          alpha: 0.2,
+                        )
+                      : AppTheme.backgroundColor,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: taskData.isDragging ? AppTheme.primaryColor : AppTheme.borderColor,
+                    color: taskData.isDragging
+                        ? AppTheme.primaryColor
+                        : AppTheme.borderColor,
                     style: BorderStyle.solid,
                   ),
                 ),
                 child: Column(
                   children: [
                     Icon(
-                      taskData.isDragging ? Icons.file_download : Icons.cloud_upload_outlined,
+                      taskData.isDragging
+                          ? Icons.file_download
+                          : Icons.cloud_upload_outlined,
                       size: 32,
-                      color: taskData.isDragging ? AppTheme.primaryColor : AppTheme.textSecondary,
+                      color: taskData.isDragging
+                          ? AppTheme.primaryColor
+                          : AppTheme.textSecondary,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      taskData.isDragging ? 'Drop files here' : 'Drag & drop files here',
+                      taskData.isDragging
+                          ? 'Drop files here'
+                          : 'Drag & drop files here',
                       style: TextStyle(
                         fontSize: 13,
-                        color: taskData.isDragging ? AppTheme.primaryColor : AppTheme.textSecondary,
-                        fontWeight: taskData.isDragging ? FontWeight.w600 : FontWeight.normal,
+                        color: taskData.isDragging
+                            ? AppTheme.primaryColor
+                            : AppTheme.textSecondary,
+                        fontWeight: taskData.isDragging
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -621,14 +774,19 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                   scrollDirection: Axis.horizontal,
                   itemCount: taskData.attachments.length,
                   itemBuilder: (context, attachmentIndex) {
-                    final path = taskData.attachments[attachmentIndex];
-                    final fileName = path.split(Platform.pathSeparator).last;
+                    final path = taskData
+                        .attachments[attachmentIndex];
+                    final fileName = path
+                        .split(Platform.pathSeparator)
+                        .last;
                     final isImage = _isImageFile(path);
 
                     return Container(
                       width: 100,
                       height: 100,
-                      margin: const EdgeInsets.only(right: 8),
+                      margin: const EdgeInsets.only(
+                        right: 8,
+                      ),
                       child: Stack(
                         children: [
                           // Preview container
@@ -636,23 +794,37 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                             width: 100,
                             height: 100,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppTheme.borderColor),
-                              color: AppTheme.backgroundColor,
+                              borderRadius:
+                                  BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.borderColor,
+                              ),
+                              color:
+                                  AppTheme.backgroundColor,
                             ),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(7),
+                              borderRadius:
+                                  BorderRadius.circular(7),
                               child: isImage
                                   ? Image.file(
                                       File(path),
                                       fit: BoxFit.cover,
                                       width: 100,
                                       height: 100,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return _buildFileIcon(fileName);
-                                      },
+                                      errorBuilder:
+                                          (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) {
+                                            return _buildFileIcon(
+                                              fileName,
+                                            );
+                                          },
                                     )
-                                  : _buildFileIcon(fileName),
+                                  : _buildFileIcon(
+                                      fileName,
+                                    ),
                             ),
                           ),
                           // Delete button overlay
@@ -660,25 +832,39 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
                             top: 4,
                             right: 4,
                             child: GestureDetector(
-                              onTap: () => _removeAttachment(projectId, taskIndex, attachmentIndex),
+                              onTap: () =>
+                                  _removeAttachment(
+                                    projectId,
+                                    taskIndex,
+                                    attachmentIndex,
+                                  ),
                               child: Container(
                                 width: 24,
                                 height: 24,
                                 decoration: BoxDecoration(
-                                  color: AppTheme.errorColor,
+                                  color:
+                                      AppTheme.errorColor,
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppTheme.textPrimary.withValues(alpha: 0.2),
+                                      color: AppTheme
+                                          .textPrimary
+                                          .withValues(
+                                            alpha: 0.2,
+                                          ),
                                       blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                                      offset: const Offset(
+                                        0,
+                                        2,
+                                      ),
                                     ),
                                   ],
                                 ),
                                 child: Icon(
                                   Icons.close,
                                   size: 14,
-                                  color: AppTheme.surfaceColor,
+                                  color:
+                                      AppTheme.surfaceColor,
                                 ),
                               ),
                             ),
@@ -705,11 +891,23 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
   bool _isImageFile(String path) {
     final extension = path.toLowerCase().split('.').last;
-    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif'].contains(extension);
+    return [
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'bmp',
+      'webp',
+      'heic',
+      'heif',
+    ].contains(extension);
   }
 
   Widget _buildFileIcon(String fileName) {
-    final extension = fileName.toLowerCase().split('.').last;
+    final extension = fileName
+        .toLowerCase()
+        .split('.')
+        .last;
     IconData iconData;
     Color iconColor;
 
@@ -745,7 +943,9 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
         Icon(iconData, size: 32, color: iconColor),
         const SizedBox(height: 4),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 4,
+          ),
           child: Text(
             fileName,
             style: const TextStyle(fontSize: 9),

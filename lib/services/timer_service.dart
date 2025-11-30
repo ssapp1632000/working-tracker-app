@@ -61,17 +61,23 @@ class TimerService {
         await stopTimer();
       }
 
+      final now = DateTime.now();
+
       // Create new time entry
       _currentEntry = TimeEntry(
-        id: 'entry_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'entry_${now.millisecondsSinceEpoch}',
         projectId: project.id,
         projectName: project.name,
-        startTime: DateTime.now(),
+        startTime: now,
         isRunning: true,
       );
 
       // Save to storage
       await _storage.saveTimeEntry(_currentEntry!);
+
+      // Update project's lastActiveAt for sorting
+      final updatedProject = project.copyWith(lastActiveAt: now);
+      await _projectService.updateProject(updatedProject);
 
       // Start internal timer
       _startInternalTimer();

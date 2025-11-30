@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../core/extensions/context_extensions.dart';
@@ -224,6 +225,37 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _handlePaste() async {
+    if (_isVerifying) return;
+
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    if (clipboardData?.text != null) {
+      final text = clipboardData!.text!;
+      final digitsOnly = text.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digitsOnly.isNotEmpty) {
+        final otp = digitsOnly.length > 6 ? digitsOnly.substring(0, 6) : digitsOnly;
+        _otpController.text = otp;
+        setState(() {
+          _currentOTP = otp;
+          _errorText = null;
+        });
+        // Don't auto-verify on paste - let user click verify button
+      }
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final isMetaOrControl = HardwareKeyboard.instance.isMetaPressed ||
+          HardwareKeyboard.instance.isControlPressed;
+      if (isMetaOrControl && event.logicalKey == LogicalKeyboardKey.keyV) {
+        _handlePaste();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final canResend = _resendCooldown == 0 && !_isResending;
@@ -238,12 +270,14 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
           onPressed: _handleEditEmail,
         ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
+      body: Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Card(
               elevation: 4,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -348,6 +382,13 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
                       animationDuration: const Duration(milliseconds: 200),
                       enableActiveFill: true,
                       autoFocus: true,
+                      enablePinAutofill: true,
+                      beforeTextPaste: (text) {
+                        // Allow paste if the text contains only digits
+                        if (text == null) return false;
+                        final digitsOnly = text.replaceAll(RegExp(r'[^0-9]'), '');
+                        return digitsOnly.isNotEmpty;
+                      },
                       onCompleted: (code) {
                         _currentOTP = code;
                         _handleVerifyOTP();
@@ -355,9 +396,19 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
                       onChanged: (value) {
                         setState(() {
                           _currentOTP = value;
-                          _errorText = null;
+                          // Only clear error when user starts typing new code
+                          if (value.isNotEmpty) {
+                            _errorText = null;
+                          }
                         });
                       },
+                    ),
+
+                    // Paste button for desktop
+                    TextButton.icon(
+                      onPressed: _isVerifying ? null : _handlePaste,
+                      icon: const Icon(Icons.content_paste, size: 16),
+                      label: const Text('Paste code from clipboard'),
                     ),
 
                     // Error Text
@@ -431,6 +482,7 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

@@ -103,6 +103,10 @@ class WindowService {
   }
 
   // Switch to floating widget mode
+  // Start with collapsed width (60px) - only the visible pill
+  static const double _collapsedWidth = 60.0;
+  static const double _floatingHeight = 80.0;
+
   Future<void> switchToFloatingMode() async {
     if (!_isDesktop()) return;
 
@@ -110,19 +114,19 @@ class WindowService {
       _isFloatingMode = true;
       _logger.info('Configuring floating mode...');
 
-      // Set window properties
+      // Set window properties - start with collapsed width
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setSkipTaskbar(true);
-      await windowManager.setMinimumSize(const Size(280, 80));
-      await windowManager.setSize(const Size(280, 80));
+      await windowManager.setMinimumSize(const Size(_collapsedWidth, _floatingHeight));
+      await windowManager.setSize(const Size(_collapsedWidth, _floatingHeight));
 
       // Position window at the RIGHT edge of screen
       try {
         final primaryDisplay = await screenRetriever.getPrimaryDisplay();
         final screenWidth = primaryDisplay.size.width;
         final screenHeight = primaryDisplay.size.height;
-        final x = screenWidth - 280;
-        final y = (screenHeight - 80) / 2;
+        final x = screenWidth - _collapsedWidth;
+        final y = (screenHeight - _floatingHeight) / 2;
         await windowManager.setPosition(Offset(x, y));
       } catch (e) {
         _logger.warning('Could not set window position: $e');
@@ -138,8 +142,8 @@ class WindowService {
 
         // On macOS, setAsFrameless() may reduce window height - compensate
         final sizeAfterFrameless = await windowManager.getSize();
-        if (sizeAfterFrameless.height < 80) {
-          await windowManager.setSize(const Size(280, 80));
+        if (sizeAfterFrameless.height < _floatingHeight) {
+          await windowManager.setSize(const Size(_collapsedWidth, _floatingHeight));
         }
       } catch (e) {
         _logger.warning('Could not set frameless mode: $e');

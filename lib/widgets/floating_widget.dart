@@ -49,8 +49,10 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   final TextEditingController _searchController = TextEditingController();
 
   /// Current horizontal slide offset for the widget animation
-  /// Starts slid out (80% off-screen)
   double _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
+
+  /// Debounce timer for collapse to prevent flickering
+  Timer? _collapseTimer;
 
   // ============================================================================
   // LIFECYCLE METHODS
@@ -78,14 +80,13 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Checks if window has been moved and snaps it back to right edge
   Future<void> _checkAndSnapToRightEdge() async {
-    // IMPORTANT: Only snap in floating mode (small window 60-280px wide)
-    // Don't snap the 800x600 dashboard window!
+    // IMPORTANT: Only snap in floating mode (60-280px wide window)
+    // Don't snap the 380x580 dashboard window!
     try {
       final size = await windowManager.getSize();
 
-      // If window is not our fixed width, it's the dashboard - don't snap!
-      if (size.width != FloatingWidgetConstants.fixedWidgetWidth) {
-        print('FloatingWidget: Skipping snap - window is ${size.width}px (dashboard mode)');
+      // If window is larger than floating widget, it's the dashboard - don't snap!
+      if (size.width > FloatingWidgetConstants.fixedWidgetWidth) {
         return;
       }
 
@@ -101,11 +102,10 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
       // If window has been moved away from right edge (more than 10px), snap it back
       if ((position.dx - rightEdgeX).abs() > 10) {
-        print('FloatingWidget: Window moved from x=${position.dx} to right edge x=$rightEdgeX (screen width=$screenWidth)');
         await windowManager.setPosition(Offset(rightEdgeX, position.dy));
       }
     } catch (e) {
-      print('FloatingWidget: Error checking snap position: $e');
+      // Silently ignore snap errors
     }
   }
 
@@ -118,45 +118,35 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       await Future.delayed(const Duration(milliseconds: 250));
 
       final currentSize = await windowManager.getSize();
-      print('FloatingWidget: Current window size: ${currentSize.width}x${currentSize.height}');
 
       // If window height is less than baseHeight, resize it aggressively
       if (currentSize.height < FloatingWidgetConstants.baseHeight) {
-        print('FloatingWidget: Window height too small (${currentSize.height}), forcing resize to ${FloatingWidgetConstants.baseHeight}');
-
         // Try multiple times to ensure the size sticks
         for (int i = 0; i < 3; i++) {
           await windowManager.setSize(
             Size(
-              FloatingWidgetConstants.fixedWidgetWidth,
+              FloatingWidgetConstants.collapsedVisibleWidth,
               FloatingWidgetConstants.baseHeight,
             ),
           );
           await Future.delayed(const Duration(milliseconds: 100));
 
           final checkSize = await windowManager.getSize();
-          print('FloatingWidget: Attempt ${i + 1} - Window size: ${checkSize.width}x${checkSize.height}');
-
           if (checkSize.height >= FloatingWidgetConstants.baseHeight) {
-            print('FloatingWidget: Window size correction successful');
             break;
           }
         }
-
-        final finalSize = await windowManager.getSize();
-        print('FloatingWidget: Final window size: ${finalSize.width}x${finalSize.height}');
-      } else {
-        print('FloatingWidget: Window size is correct');
       }
     } catch (e) {
-      print('FloatingWidget: Error ensuring window size: $e');
+      // Silently ignore errors
     }
   }
 
   @override
   void dispose() {
-    // Cancel snap-back timer
+    // Cancel timers
     _snapBackTimer?.cancel();
+    _collapseTimer?.cancel();
     // Dispose search controller
     _searchController.dispose();
     super.dispose();
@@ -184,7 +174,7 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
               )
           : FloatingWidgetConstants.baseHeight;
 
-      // Width is always fixed
+      // Width is always fixed at 280px
       await windowManager.setSize(
         Size(FloatingWidgetConstants.fixedWidgetWidth, height),
       );
@@ -200,6 +190,9 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Called when mouse enters the widget area
   void _onMouseEnter() {
+    // Cancel any pending collapse
+    _collapseTimer?.cancel();
+
     // Ignore if already hovered
     if (_isHovered) return;
 
@@ -207,17 +200,71 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       _isHovered = true;
       _currentSlideOffset = FloatingWidgetConstants.slideInOffset;
     });
+
+    // Expand window to full width
+    _expandWindow();
   }
 
   /// Called when mouse exits the widget area
   void _onMouseExit() {
-    // Ignore if not hovered or dropdown is expanded
-    if (!_isHovered || _isExpanded) return;
+    // Ignore if dropdown is expanded
+    if (_isExpanded) return;
 
-    setState(() {
-      _isHovered = false;
-      _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
+    // Debounce collapse to prevent flickering
+    _collapseTimer?.cancel();
+    _collapseTimer = Timer(const Duration(milliseconds: 150), () {
+      if (_isExpanded) return;
+
+      setState(() {
+        _isHovered = false;
+        _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
+      });
+
+      // Collapse window after animation completes
+      Future.delayed(FloatingWidgetConstants.animationDuration, () {
+        if (!_isHovered && !_isExpanded) {
+          _collapseWindow();
+        }
+      });
     });
+  }
+
+  /// Expands the window to full width, keeping right edge fixed
+  Future<void> _expandWindow() async {
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+
+    try {
+      final currentPosition = await windowManager.getPosition();
+      final currentSize = await windowManager.getSize();
+
+      // Calculate new X to keep right edge fixed
+      final widthDelta = FloatingWidgetConstants.fixedWidgetWidth - currentSize.width;
+      final newX = currentPosition.dx - widthDelta;
+
+      await windowManager.setSize(Size(FloatingWidgetConstants.fixedWidgetWidth, currentSize.height));
+      await windowManager.setPosition(Offset(newX, currentPosition.dy));
+    } catch (e) {
+      // Silently ignore errors
+    }
+  }
+
+  /// Collapses the window to small width, keeping right edge fixed
+  Future<void> _collapseWindow() async {
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+
+    try {
+      final currentPosition = await windowManager.getPosition();
+      final currentSize = await windowManager.getSize();
+
+      // Calculate new X to keep right edge fixed
+      final widthDelta = currentSize.width - FloatingWidgetConstants.collapsedVisibleWidth;
+      final newX = currentPosition.dx + widthDelta;
+
+      await windowManager.setSize(Size(FloatingWidgetConstants.collapsedVisibleWidth, FloatingWidgetConstants.baseHeight));
+      await windowManager.setPosition(Offset(newX, currentPosition.dy));
+    } catch (e) {
+      // Silently ignore errors
+    }
   }
 
   /// Toggles the dropdown expansion state
@@ -333,6 +380,8 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   }
 
   /// Builds the main animated container that slides horizontally
+  /// Uses MouseRegion with onHover to track cursor position and enable click-through
+  /// on transparent areas
   Widget _buildAnimatedContainer(
     List<dynamic> projects,
     dynamic currentProject,
@@ -343,12 +392,12 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       onEnter: (_) => _onMouseEnter(),
       onExit: (_) => _onMouseExit(),
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
+          // The sliding content
           AnimatedPositioned(
             duration: FloatingWidgetConstants.animationDuration,
-            curve: Curves.easeInOutQuart,
-            right: -_currentSlideOffset, // Negative to slide left when hovering
+            curve: Curves.easeOutCubic,
+            right: -_currentSlideOffset,
             top: 0,
             bottom: 0,
             width: FloatingWidgetConstants.fixedWidgetWidth,

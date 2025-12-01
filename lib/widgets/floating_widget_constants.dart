@@ -101,22 +101,18 @@ class FloatingWidgetConstants {
   // SLIDE ANIMATION
   // ============================================================================
 
-  /// Fixed widget width (always in expanded state)
+  /// Fixed widget width (always 280px)
   static const double fixedWidgetWidth = 280.0;
 
-  /// Percentage of widget that remains visible when slid out (20% = 0.2)
-  static const double slideOutVisiblePercentage = 0.2;
-
-  /// Percentage of widget that is visible when slid in (99% = 0.99)
-  static const double slideInVisiblePercentage = 0.99;
+  /// Width of the visible "pill" area when collapsed (used for hit-testing)
+  static const double collapsedVisibleWidth = 60.0;
 
   /// How much to offset the widget horizontally when slid out
-  /// 280 * 0.8 = 224px to the right (only 56px visible)
-  static const double slideOutOffset = fixedWidgetWidth * (1 - slideOutVisiblePercentage);
+  /// Widget slides right so only ~60px is visible
+  static const double slideOutOffset = fixedWidgetWidth - collapsedVisibleWidth;
 
-  /// How much to offset the widget horizontally when slid in
-  /// 280 * 0.01 = 2.8px to the right (277.2px visible)
-  static const double slideInOffset = fixedWidgetWidth * (1 - slideInVisiblePercentage);
+  /// How much to offset the widget horizontally when slid in (fully visible)
+  static const double slideInOffset = 0.0;
 
   // ============================================================================
   // TYPOGRAPHY

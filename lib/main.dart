@@ -9,6 +9,7 @@ import 'services/storage_service.dart';
 import 'services/timer_service.dart';
 import 'services/logger_service.dart';
 import 'services/email_service.dart';
+import 'services/auth_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/window_provider.dart';
 import 'screens/email_entry_screen.dart';
@@ -27,36 +28,47 @@ void main() async {
     await dotenv.load(fileName: '.env');
     logger.info('Environment variables loaded');
 
+    // Initialize storage service first (needed to check login state)
+    final storage = StorageService();
+    await storage.initialize();
+    logger.info('Storage service initialized');
+
     // Initialize window manager for desktop
     if (Platform.isWindows ||
         Platform.isLinux ||
         Platform.isMacOS) {
       await windowManager.ensureInitialized();
 
-      WindowOptions windowOptions = const WindowOptions(
-        size: Size(800, 600),
+      // Check if user is logged in to set appropriate window size
+      final authService = AuthService();
+      final isLoggedIn = authService.isLoggedIn();
+
+      // Auth screens: window IS the card, tight fit
+      // Dashboard: slightly taller for more content
+      final windowSize = isLoggedIn ? const Size(380, 580) : const Size(380, 340);
+
+      WindowOptions windowOptions = WindowOptions(
+        size: windowSize,
         center: true,
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppTheme.surfaceColor,
         skipTaskbar: false,
-        titleBarStyle: TitleBarStyle.normal,
+        titleBarStyle: TitleBarStyle.hidden,
         title: AppConstants.appName,
       );
 
       await windowManager.waitUntilReadyToShow(
         windowOptions,
         () async {
+          if (!isLoggedIn) {
+            await windowManager.setResizable(false);
+          }
           await windowManager.show();
           await windowManager.focus();
         },
       );
 
-      logger.info('Window manager initialized');
+      logger.info('Window manager initialized with size: ${windowSize.width}x${windowSize.height}');
     }
-
-    // Initialize storage service
-    final storage = StorageService();
-    await storage.initialize();
-    logger.info('Storage service initialized');
 
     // Initialize timer service
     final timerService = TimerService();

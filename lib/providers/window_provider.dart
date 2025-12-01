@@ -32,13 +32,9 @@ class WindowModeNotifier extends StateNotifier<bool> {
       _logger.info('Switching to floating mode...');
 
       // Configure window FIRST before changing UI state
+      await _windowService.switchToFloatingMode();
 
-      // Poll the actual window size until it matches what we requested (280x80)
-      // bool sizeCorrect = false;
-      // int attempts = 0;
-      // const maxAttempts = 10;
-
-      // Then set state to trigger UI change
+      // Then set state to trigger UI change after window is ready
       state = true;
       _logger.info('Window mode: Floating');
     } catch (e, stackTrace) {
@@ -49,7 +45,6 @@ class WindowModeNotifier extends StateNotifier<bool> {
       );
       state = false;
     }
-    await _windowService.switchToFloatingMode();
   }
 
   // Switch to main mode
@@ -57,48 +52,15 @@ class WindowModeNotifier extends StateNotifier<bool> {
     try {
       _logger.info('Switching to main mode...');
 
-      // Configure window FIRST to resize before UI change
+      // Set state FIRST to hide the floating widget immediately
+      // This prevents the floating widget animation from showing
+      state = false;
+      _logger.info('Window mode: Main (UI updated)');
+
+      // Then configure window to resize
       await _windowService.switchToMainMode();
 
-      // Poll the actual window size until it matches what we requested (800x600)
-      bool sizeCorrect = false;
-      int attempts = 0;
-      const maxAttempts = 10;
-
-      while (!sizeCorrect && attempts < maxAttempts) {
-        await Future.delayed(
-          const Duration(milliseconds: 50),
-        );
-        final verifySize = await _windowService
-            .getWindowSize();
-
-        _logger.info(
-          'Attempt ${attempts + 1} - Window size: ${verifySize.width}x${verifySize.height}',
-        );
-
-        // Check if size is correct (at least 600x400, should be 800x600)
-        if (verifySize.width >= 600 &&
-            verifySize.height >= 400) {
-          sizeCorrect = true;
-          _logger.info(
-            'Window size verified (${verifySize.width}x${verifySize.height}) - proceeding with UI update',
-          );
-        } else {
-          attempts++;
-          if (attempts >= maxAttempts) {
-            _logger.warning(
-              'Window did not resize to expected size after $maxAttempts attempts',
-            );
-            _logger.warning(
-              'Expected: at least 600x400, Got: ${verifySize.width}x${verifySize.height}',
-            );
-          }
-        }
-      }
-
-      // Then set state to trigger UI change to dashboard
-      state = false;
-      _logger.info('Window mode: Main');
+      _logger.info('Window configured for main mode');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to switch to main mode',

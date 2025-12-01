@@ -8,6 +8,7 @@ import '../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/otp_service.dart';
 import '../services/email_service.dart';
+import '../services/window_service.dart';
 import '../screens/dashboard_screen.dart';
 import '../widgets/gradient_button.dart';
 
@@ -26,6 +27,7 @@ class OTPVerificationScreen extends ConsumerStatefulWidget {
 class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
   final _otpController = TextEditingController();
   final _otpService = OTPService();
+  final _windowService = WindowService();
   bool _isVerifying = false;
   bool _isResending = false;
   int _resendCooldown = 0;
@@ -38,6 +40,7 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
   @override
   void initState() {
     super.initState();
+    _windowService.setOtpWindowSize();
     _startCooldownTimer();
     _startExpirationTimer();
   }
@@ -261,228 +264,202 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
     final canResend = _resendCooldown == 0 && !_isResending;
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _handleEditEmail,
-        ),
-      ),
+      backgroundColor: AppTheme.surfaceColor,
       body: Focus(
         onKeyEvent: _handleKeyEvent,
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Icon
+              Icon(
+                Icons.mark_email_read_outlined,
+                size: 48,
+                color: Theme.of(context).primaryColor,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Icon
-                    Icon(
-                      Icons.mark_email_read_outlined,
-                      size: 64,
-                      color: Theme.of(context).primaryColor,
+              const SizedBox(height: 12),
+
+              // Title
+              Text(
+                'Enter Code',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
 
-                    // Title
-                    Text(
-                      'Enter Code',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                      textAlign: TextAlign.center,
+              // Masked Email
+              Text(
+                'Sent to ${_maskEmail(widget.email)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary,
                     ),
-                    const SizedBox(height: 8),
+                textAlign: TextAlign.center,
+              ),
 
-                    // Masked Email
-                    Text(
-                      'Sent to ${_maskEmail(widget.email)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.textSecondary,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
+              // Edit Email Button
+              TextButton(
+                onPressed: _handleEditEmail,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                ),
+                child: const Text('Edit Email', style: TextStyle(fontSize: 12)),
+              ),
+              const SizedBox(height: 12),
 
-                    // Edit Email Button
-                    TextButton(
-                      onPressed: _handleEditEmail,
-                      child: const Text('Edit Email'),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Expiration Timer
-                    if (_expirationTime > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.warningColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.warningColor.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.timer_outlined,
-                              size: 16,
-                              color: AppTheme.warningColor,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Expires in ${_formatTime(_expirationTime)}',
-                              style: TextStyle(
-                                color: AppTheme.warningColor,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_expirationTime > 0) const SizedBox(height: 24),
-
-                    // PIN Code Fields
-                    PinCodeTextField(
-                      appContext: context,
-                      length: 6,
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      animationType: AnimationType.fade,
-                      enabled: !_isVerifying,
-                      pinTheme: PinTheme(
-                        shape: PinCodeFieldShape.box,
-                        borderRadius: BorderRadius.circular(8),
-                        fieldHeight: 50,
-                        fieldWidth: 45,
-                        activeFillColor: AppTheme.surfaceColor,
-                        inactiveFillColor: AppTheme.surfaceColor,
-                        selectedFillColor: AppTheme.surfaceColor,
-                        activeColor: AppTheme.primaryColor,
-                        inactiveColor: AppTheme.borderColor,
-                        selectedColor: AppTheme.primaryColor,
-                        errorBorderColor: AppTheme.errorColor,
-                      ),
-                      cursorColor: AppTheme.primaryColor,
-                      animationDuration: const Duration(milliseconds: 200),
-                      enableActiveFill: true,
-                      autoFocus: true,
-                      enablePinAutofill: true,
-                      beforeTextPaste: (text) {
-                        // Allow paste if the text contains only digits
-                        if (text == null) return false;
-                        final digitsOnly = text.replaceAll(RegExp(r'[^0-9]'), '');
-                        return digitsOnly.isNotEmpty;
-                      },
-                      onCompleted: (code) {
-                        _currentOTP = code;
-                        _handleVerifyOTP();
-                      },
-                      onChanged: (value) {
-                        setState(() {
-                          _currentOTP = value;
-                          // Only clear error when user starts typing new code
-                          if (value.isNotEmpty) {
-                            _errorText = null;
-                          }
-                        });
-                      },
-                    ),
-
-                    // Paste button for desktop
-                    TextButton.icon(
-                      onPressed: _isVerifying ? null : _handlePaste,
-                      icon: const Icon(Icons.content_paste, size: 16),
-                      label: const Text('Paste code from clipboard'),
-                    ),
-
-                    // Error Text
-                    if (_errorText != null) ...[
-                      const SizedBox(height: 8),
+              // Expiration Timer
+              if (_expirationTime > 0) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                        color: AppTheme.warningColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 14, color: AppTheme.warningColor),
+                      const SizedBox(width: 6),
                       Text(
-                        _errorText!,
-                        style: const TextStyle(
-                          color: AppTheme.errorColor,
-                          fontSize: 13,
+                        'Expires in ${_formatTime(_expirationTime)}',
+                        style: TextStyle(
+                          color: AppTheme.warningColor,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ],
-                    const SizedBox(height: 24),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
-                    // Verify Button
-                    GradientButton(
-                      onPressed: (_isVerifying || _currentOTP.length != 6)
-                          ? null
-                          : _handleVerifyOTP,
-                      child: _isVerifying
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Verify Code',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
+              // PIN Code Fields
+              PinCodeTextField(
+                appContext: context,
+                length: 6,
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                animationType: AnimationType.fade,
+                enabled: !_isVerifying,
+                pinTheme: PinTheme(
+                  shape: PinCodeFieldShape.box,
+                  borderRadius: BorderRadius.circular(8),
+                  fieldHeight: 45,
+                  fieldWidth: 40,
+                  activeFillColor: AppTheme.backgroundColor,
+                  inactiveFillColor: AppTheme.backgroundColor,
+                  selectedFillColor: AppTheme.backgroundColor,
+                  activeColor: AppTheme.primaryColor,
+                  inactiveColor: AppTheme.borderColor,
+                  selectedColor: AppTheme.primaryColor,
+                  errorBorderColor: AppTheme.errorColor,
+                ),
+                cursorColor: AppTheme.primaryColor,
+                animationDuration: const Duration(milliseconds: 200),
+                enableActiveFill: true,
+                autoFocus: true,
+                enablePinAutofill: true,
+                beforeTextPaste: (text) {
+                  if (text == null) return false;
+                  final digitsOnly = text.replaceAll(RegExp(r'[^0-9]'), '');
+                  return digitsOnly.isNotEmpty;
+                },
+                onCompleted: (code) {
+                  _currentOTP = code;
+                  _handleVerifyOTP();
+                },
+                onChanged: (value) {
+                  setState(() {
+                    _currentOTP = value;
+                    if (value.isNotEmpty) {
+                      _errorText = null;
+                    }
+                  });
+                },
+              ),
 
-                    // Resend Button
-                    TextButton.icon(
-                      onPressed: canResend ? _handleResendOTP : null,
-                      icon: _isResending
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh),
-                      label: Text(
-                        canResend
-                            ? 'Resend Code'
-                            : 'Resend in ${_resendCooldown}s',
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Info Text
-                    Text(
-                      'Didn\'t receive the code? Check your spam folder',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textSecondary,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+              // Paste button for desktop
+              TextButton.icon(
+                onPressed: _isVerifying ? null : _handlePaste,
+                icon: const Icon(Icons.content_paste, size: 14),
+                label: const Text('Paste code', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 ),
               ),
-            ),
+
+              // Error Text
+              if (_errorText != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _errorText!,
+                  style:
+                      const TextStyle(color: AppTheme.errorColor, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 16),
+
+              // Verify Button
+              GradientButton(
+                onPressed: (_isVerifying || _currentOTP.length != 6)
+                    ? null
+                    : _handleVerifyOTP,
+                child: _isVerifying
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text(
+                        'Verify Code',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+              ),
+              const SizedBox(height: 12),
+
+              // Resend Button
+              TextButton.icon(
+                onPressed: canResend ? _handleResendOTP : null,
+                icon: _isResending
+                    ? const SizedBox(
+                        height: 14,
+                        width: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: Text(
+                  canResend ? 'Resend Code' : 'Resend in ${_resendCooldown}s',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Info Text
+              Text(
+                'Didn\'t receive the code? Check your spam folder',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
-      ),
       ),
     );
   }

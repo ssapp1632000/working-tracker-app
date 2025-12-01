@@ -12,26 +12,23 @@ import '../models/project.dart';
 import '../models/task_submission.dart';
 import '../providers/auth_provider.dart';
 import '../services/report_submission_service.dart';
+import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
 
 class SubmissionFormScreen extends ConsumerStatefulWidget {
   final List<Project> projects;
 
-  const SubmissionFormScreen({
-    super.key,
-    required this.projects,
-  });
+  const SubmissionFormScreen({super.key, required this.projects});
 
   @override
   ConsumerState<SubmissionFormScreen> createState() =>
       _SubmissionFormScreenState();
 }
 
-class _SubmissionFormScreenState
-    extends ConsumerState<SubmissionFormScreen> {
+class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _reportSubmissionService =
-      ReportSubmissionService();
+  final _reportSubmissionService = ReportSubmissionService();
+  final _windowService = WindowService();
 
   // Map of project ID to list of tasks for that project
   late Map<String, List<TaskFormData>> _projectTasks;
@@ -41,6 +38,7 @@ class _SubmissionFormScreenState
   @override
   void initState() {
     super.initState();
+    _windowService.setDashboardWindowSize();
     _initializeFormData();
   }
 
@@ -86,31 +84,23 @@ class _SubmissionFormScreenState
 
   void _removeTask(String projectId, int taskIndex) {
     if (_projectTasks[projectId]!.length <= 1) {
-      context.showErrorSnackBar(
-        'Each project must have at least one task',
-      );
+      context.showErrorSnackBar('Each project must have at least one task');
       return;
     }
 
     setState(() {
-      final task = _projectTasks[projectId]!.removeAt(
-        taskIndex,
-      );
+      final task = _projectTasks[projectId]!.removeAt(taskIndex);
       task.taskNameController.dispose();
       task.taskDescController.dispose();
     });
   }
 
-  Future<void> _pickFiles(
-    String projectId,
-    int taskIndex,
-  ) async {
+  Future<void> _pickFiles(String projectId, int taskIndex) async {
     try {
-      FilePickerResult?
-      result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        type: FileType
-            .any, // Changed from custom to any for better compatibility
+        type:
+            FileType.any, // Changed from custom to any for better compatibility
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -125,74 +115,55 @@ class _SubmissionFormScreenState
 
         if (filePaths.isNotEmpty) {
           setState(() {
-            _projectTasks[projectId]![taskIndex].attachments
-                .addAll(filePaths);
+            _projectTasks[projectId]![taskIndex].attachments.addAll(filePaths);
           });
         }
       }
     } catch (e) {
       if (mounted) {
-        context.showErrorSnackBar(
-          'Error picking files: $e',
-        );
+        context.showErrorSnackBar('Error picking files: $e');
       }
     }
   }
 
-  void _removeAttachment(
-    String projectId,
-    int taskIndex,
-    int attachmentIndex,
-  ) {
+  void _removeAttachment(String projectId, int taskIndex, int attachmentIndex) {
     setState(() {
-      _projectTasks[projectId]![taskIndex].attachments
-          .removeAt(attachmentIndex);
+      _projectTasks[projectId]![taskIndex].attachments.removeAt(
+        attachmentIndex,
+      );
     });
   }
 
-  Future<void> _takeScreenshot(
-    String projectId,
-    int taskIndex,
-  ) async {
+  Future<void> _takeScreenshot(String projectId, int taskIndex) async {
     try {
       // Minimize the window before taking screenshot
       await windowManager.minimize();
 
       // Wait a moment for the window to minimize
-      await Future.delayed(
-        const Duration(milliseconds: 300),
-      );
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // Use screen_capturer for cross-platform support (Windows, macOS, Linux)
-      CapturedData? capturedData = await screenCapturer
-          .capture(
-            mode: CaptureMode
-                .region, // Interactive region selection
-          );
+      CapturedData? capturedData = await screenCapturer.capture(
+        mode: CaptureMode.region, // Interactive region selection
+      );
 
       // Restore the window after screenshot
       await windowManager.restore();
       await windowManager.focus();
 
-      if (capturedData != null &&
-          capturedData.imageBytes != null) {
+      if (capturedData != null && capturedData.imageBytes != null) {
         // Save to temp file
-        final timestamp =
-            DateTime.now().millisecondsSinceEpoch;
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
         final tempDir = Directory.systemTemp;
-        final screenshotPath =
-            '${tempDir.path}/screenshot_$timestamp.png';
+        final screenshotPath = '${tempDir.path}/screenshot_$timestamp.png';
         final file = File(screenshotPath);
         await file.writeAsBytes(capturedData.imageBytes!);
 
         setState(() {
-          _projectTasks[projectId]![taskIndex].attachments
-              .add(screenshotPath);
+          _projectTasks[projectId]![taskIndex].attachments.add(screenshotPath);
         });
         if (mounted) {
-          context.showSuccessSnackBar(
-            'Screenshot captured',
-          );
+          context.showSuccessSnackBar('Screenshot captured');
         }
       }
     } catch (e) {
@@ -201,18 +172,14 @@ class _SubmissionFormScreenState
       await windowManager.focus();
 
       if (mounted) {
-        context.showErrorSnackBar(
-          'Error taking screenshot: $e',
-        );
+        context.showErrorSnackBar('Error taking screenshot: $e');
       }
     }
   }
 
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) {
-      context.showErrorSnackBar(
-        'Please fill in all required fields',
-      );
+      context.showErrorSnackBar('Please fill in all required fields');
       return;
     }
 
@@ -220,9 +187,7 @@ class _SubmissionFormScreenState
     bool hasTaskName = false;
     for (var tasks in _projectTasks.values) {
       for (var task in tasks) {
-        if (task.taskNameController.text
-            .trim()
-            .isNotEmpty) {
+        if (task.taskNameController.text.trim().isNotEmpty) {
           hasTaskName = true;
           break;
         }
@@ -231,9 +196,7 @@ class _SubmissionFormScreenState
     }
 
     if (!hasTaskName) {
-      context.showErrorSnackBar(
-        'Please provide at least one task name',
-      );
+      context.showErrorSnackBar('Please provide at least one task name');
       return;
     }
 
@@ -258,12 +221,8 @@ class _SubmissionFormScreenState
           allTasks.add(
             TaskSubmission(
               projectName: project.name,
-              taskName: taskData.taskNameController.text
-                  .trim(),
-              taskDescription: taskData
-                  .taskDescController
-                  .text
-                  .trim(),
+              taskName: taskData.taskNameController.text.trim(),
+              taskDescription: taskData.taskDescController.text.trim(),
               attachmentPaths: taskData.attachments,
             ),
           );
@@ -279,17 +238,12 @@ class _SubmissionFormScreenState
       );
 
       // Submit report
-      final result = await _reportSubmissionService
-          .submitReport(report);
+      final result = await _reportSubmissionService.submitReport(report);
 
       if (mounted) {
         if (result['success'] == true) {
-          context.showSuccessSnackBar(
-            'Report submitted successfully!',
-          );
-          Navigator.of(
-            context,
-          ).pop(true); // Return true to indicate success
+          context.showSuccessSnackBar('Report submitted successfully!');
+          Navigator.of(context).pop(true); // Return true to indicate success
         } else {
           context.showErrorSnackBar(
             result['message'] ?? 'Failed to submit report',
@@ -298,9 +252,7 @@ class _SubmissionFormScreenState
       }
     } catch (e) {
       if (mounted) {
-        context.showErrorSnackBar(
-          'Error submitting report: $e',
-        );
+        context.showErrorSnackBar('Error submitting report: $e');
       }
     } finally {
       if (mounted) {
@@ -319,24 +271,49 @@ class _SubmissionFormScreenState
 
     if (projectsWithTime.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Submit Session Report'),
-        ),
-        body: Center(
+        backgroundColor: AppTheme.surfaceColor,
+        body: Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 40.0, 16.0, 16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.timer_off,
-                size: 64,
-                color: AppTheme.textSecondary,
+              // Header with back button
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Submit Report',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No project time to submit',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: AppTheme.textSecondary,
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.timer_off,
+                        size: 48,
+                        color: AppTheme.textSecondary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No project time to submit',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -346,44 +323,37 @@ class _SubmissionFormScreenState
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Submit Session Report'),
-        elevation: 2,
-      ),
-      body: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            // Summary header
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: context.colorScheme.primary.withValues(
-                alpha: 0.1,
-              ),
-              child: Row(
+      backgroundColor: AppTheme.surfaceColor,
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 40.0, 16.0, 16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header with back button and summary
+              Row(
                 children: [
-                  Icon(
-                    Icons.assessment,
-                    color: context.colorScheme.primary,
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Session Summary',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
                         Text(
-                          '${projectsWithTime.length} project${projectsWithTime.length > 1 ? 's' : ''} - Total: ${DateTimeUtils.formatDuration(_getTotalTime(projectsWithTime))}',
-                          style: const TextStyle(
-                            fontSize: 14,
+                          'Submit Report',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${projectsWithTime.length} project${projectsWithTime.length > 1 ? 's' : ''} • ${DateTimeUtils.formatDuration(_getTotalTime(projectsWithTime))}',
+                          style: TextStyle(
+                            fontSize: 11,
                             color: AppTheme.textSecondary,
                           ),
                         ),
@@ -392,53 +362,50 @@ class _SubmissionFormScreenState
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
 
-            // Projects and tasks list
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: projectsWithTime.length,
-                itemBuilder: (context, projectIndex) {
-                  return _buildProjectCard(
-                    projectsWithTime[projectIndex],
-                  );
-                },
-              ),
-            ),
-
-            // Submit button
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.textPrimary.withValues(
-                      alpha: 0.1,
-                    ),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: GradientButtonWithIcon(
-                    onPressed: _isSubmitting
-                        ? null
-                        : _submitReport,
-                    icon: Icons.send,
-                    label: _isSubmitting
-                        ? 'Submitting...'
-                        : 'Submit Report',
-                    isLoading: _isSubmitting,
-                  ),
+              // Projects and tasks list
+              Expanded(
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: projectsWithTime.length,
+                  itemBuilder: (context, projectIndex) {
+                    return _buildProjectCard(projectsWithTime[projectIndex]);
+                  },
                 ),
               ),
-            ),
-          ],
+
+              // Submit button
+              const SizedBox(height: 12),
+              GradientButton(
+                onPressed: _isSubmitting ? null : _submitReport,
+                height: 40,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.send, size: 16, color: Colors.white),
+                          SizedBox(width: 8),
+                          Text(
+                            'Submit Report',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -447,75 +414,77 @@ class _SubmissionFormScreenState
   Widget _buildProjectCard(Project project) {
     final tasks = _projectTasks[project.id] ?? [];
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Project header (read-only)
-            Row(
-              children: [
-                Icon(
-                  Icons.apartment,
-                  color: context.colorScheme.primary,
-                  size: 24,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Project header (read-only)
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      project.name,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      DateTimeUtils.formatDuration(project.totalTime),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        project.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Time: ${DateTimeUtils.formatDuration(project.totalTime)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
+              ),
+              // Add Task button
+              TextButton(
+                onPressed: () => _addTask(project.id),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
                 ),
-                // Add Task button
-                TextButton.icon(
-                  onPressed: () => _addTask(project.id),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add Task'),
-                  style: TextButton.styleFrom(
-                    foregroundColor:
-                        context.colorScheme.primary,
-                  ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, size: 14),
+                    SizedBox(width: 4),
+                    Text('Task', style: TextStyle(fontSize: 11)),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
 
-            const Divider(height: 24),
+          const Divider(height: 16),
 
-            // Tasks for this project
-            ...tasks.asMap().entries.map((entry) {
-              final taskIndex = entry.key;
-              final taskData = entry.value;
-              return _buildTaskForm(
-                project.id,
-                taskIndex,
-                taskData,
-                tasks.length,
-              );
-            }),
-          ],
-        ),
+          // Tasks for this project
+          ...tasks.asMap().entries.map((entry) {
+            final taskIndex = entry.key;
+            final taskData = entry.value;
+            return _buildTaskForm(
+              project.id,
+              taskIndex,
+              taskData,
+              tasks.length,
+            );
+          }),
+        ],
       ),
     );
   }
@@ -527,102 +496,116 @@ class _SubmissionFormScreenState
     int totalTasks,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundColor,
-        borderRadius: BorderRadius.circular(8),
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppTheme.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Task header with remove button
-          // Row(
-          //   children: [
-          //     Text(
-          //       'Task ${taskIndex + 1}',
-          //       style: const TextStyle(
-          //         fontSize: 14,
-          //         fontWeight: FontWeight.w600,
-          //       ),
-          //     ),
-          //     const Spacer(),
-          //     if (totalTasks > 1)
-          //       IconButton(
-          //         onPressed: () =>
-          //             _removeTask(projectId, taskIndex),
-          //         icon: const Icon(
-          //           Icons.delete_outline,
-          //           size: 20,
-          //         ),
-          //         color: AppTheme.errorColor,
-          //         tooltip: 'Remove Task',
-          //       ),
-          //   ],
-          // ),
-          // const SizedBox(height: 12),
+          // Task header with delete button
+          Row(
+            children: [
+              Text(
+                'Task ${taskIndex + 1}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              if (totalTasks > 1)
+                TextButton(
+                  onPressed: () => _removeTask(projectId, taskIndex),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
+                    foregroundColor: AppTheme.errorColor,
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [Icon(Icons.delete_outline, size: 14)],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
 
           // Task name field
           TextFormField(
             controller: taskData.taskNameController,
-            decoration: const InputDecoration(
+            style: const TextStyle(fontSize: 12),
+            decoration: InputDecoration(
               labelText: 'Task Name',
               labelStyle: const TextStyle(
                 color: AppTheme.textHint,
-                fontSize: 14,
+                fontSize: 12,
               ),
-              hintText:
-                  'e.g., Design Review, Implementation',
+              hintText: 'e.g., Design Review',
               hintStyle: const TextStyle(
                 color: AppTheme.textHint,
-                fontSize: 14,
+                fontSize: 12,
               ),
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.task_alt),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
+              isDense: true,
               filled: true,
-              fillColor: AppTheme.surfaceColor,
+              fillColor: AppTheme.backgroundColor,
             ),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return 'Task name is required';
+                return 'Required';
               }
               return null;
             },
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           // Task description field
           TextFormField(
             controller: taskData.taskDescController,
-            decoration: const InputDecoration(
-              labelText: 'Task Description (Optional)',
+            style: const TextStyle(fontSize: 12),
+            decoration: InputDecoration(
+              labelText: 'Description (Optional)',
               labelStyle: const TextStyle(
                 color: AppTheme.textHint,
-                fontSize: 14,
+                fontSize: 12,
               ),
-              hintText: 'Describe what you worked on...',
+              hintText: 'What you worked on...',
               hintStyle: const TextStyle(
                 color: AppTheme.textHint,
-                fontSize: 14,
+                fontSize: 12,
               ),
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.description),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
+              isDense: true,
               filled: true,
-              fillColor: AppTheme.surfaceColor,
+              fillColor: AppTheme.backgroundColor,
             ),
-            maxLines: 3,
+            maxLines: 2,
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           // Attachments section with drag and drop
-          _buildAttachmentsSection(
-            projectId,
-            taskIndex,
-            taskData,
-          ),
+          _buildAttachmentsSection(projectId, taskIndex, taskData),
         ],
       ),
     );
@@ -657,81 +640,87 @@ class _SubmissionFormScreenState
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: taskData.isDragging
               ? AppTheme.primaryColor.withValues(alpha: 0.1)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
             color: taskData.isDragging
                 ? AppTheme.primaryColor
                 : Colors.transparent,
-            width: 2,
+            width: 1,
           ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
+            // Header row with buttons
             Row(
               children: [
-                const Text(
+                Text(
                   'Attachments',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
                   ),
                 ),
                 const Spacer(),
-                TextButton.icon(
-                  onPressed: () =>
-                      _takeScreenshot(projectId, taskIndex),
-                  icon: const Icon(
-                    Icons.screenshot,
-                    size: 16,
+                TextButton(
+                  onPressed: () => _takeScreenshot(projectId, taskIndex),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
                   ),
-                  label: const Text(
-                    'Screenshot',
-                    style: TextStyle(fontSize: 12),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.screenshot, size: 14),
+                      SizedBox(width: 2),
+                      Text('Screenshot', style: TextStyle(fontSize: 10)),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 4),
-                TextButton.icon(
-                  onPressed: () =>
-                      _pickFiles(projectId, taskIndex),
-                  icon: const Icon(
-                    Icons.attach_file,
-                    size: 16,
+                TextButton(
+                  onPressed: () => _pickFiles(projectId, taskIndex),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
                   ),
-                  label: const Text(
-                    'Add Files',
-                    style: TextStyle(fontSize: 12),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.attach_file, size: 14),
+                      SizedBox(width: 2),
+                      Text('Files', style: TextStyle(fontSize: 10)),
+                    ],
                   ),
                 ),
               ],
             ),
 
-            // Drop zone hint
+            // Drop zone hint (compact)
             if (taskData.attachments.isEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 24,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   color: taskData.isDragging
-                      ? AppTheme.primaryColor.withValues(
-                          alpha: 0.2,
-                        )
+                      ? AppTheme.primaryColor.withValues(alpha: 0.2)
                       : AppTheme.backgroundColor,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                   border: Border.all(
                     color: taskData.isDragging
                         ? AppTheme.primaryColor
                         : AppTheme.borderColor,
-                    style: BorderStyle.solid,
                   ),
                 ),
                 child: Column(
@@ -740,24 +729,19 @@ class _SubmissionFormScreenState
                       taskData.isDragging
                           ? Icons.file_download
                           : Icons.cloud_upload_outlined,
-                      size: 32,
+                      size: 20,
                       color: taskData.isDragging
                           ? AppTheme.primaryColor
                           : AppTheme.textSecondary,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
-                      taskData.isDragging
-                          ? 'Drop files here'
-                          : 'Drag & drop files here',
+                      taskData.isDragging ? 'Drop here' : 'Drag & drop files',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 10,
                         color: taskData.isDragging
                             ? AppTheme.primaryColor
                             : AppTheme.textSecondary,
-                        fontWeight: taskData.isDragging
-                            ? FontWeight.w600
-                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -765,106 +749,71 @@ class _SubmissionFormScreenState
               ),
             ],
 
-            // File previews
+            // File previews (compact)
             if (taskData.attachments.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               SizedBox(
-                height: 100,
+                height: 60,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: taskData.attachments.length,
                   itemBuilder: (context, attachmentIndex) {
-                    final path = taskData
-                        .attachments[attachmentIndex];
-                    final fileName = path
-                        .split(Platform.pathSeparator)
-                        .last;
+                    final path = taskData.attachments[attachmentIndex];
+                    final fileName = path.split(Platform.pathSeparator).last;
                     final isImage = _isImageFile(path);
 
                     return Container(
-                      width: 100,
-                      height: 100,
-                      margin: const EdgeInsets.only(
-                        right: 8,
-                      ),
+                      width: 60,
+                      height: 60,
+                      margin: const EdgeInsets.only(right: 6),
                       child: Stack(
                         children: [
-                          // Preview container
                           Container(
-                            width: 100,
-                            height: 100,
+                            width: 60,
+                            height: 60,
                             decoration: BoxDecoration(
-                              borderRadius:
-                                  BorderRadius.circular(8),
-                              border: Border.all(
-                                color: AppTheme.borderColor,
-                              ),
-                              color:
-                                  AppTheme.backgroundColor,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTheme.borderColor),
+                              color: AppTheme.backgroundColor,
                             ),
                             child: ClipRRect(
-                              borderRadius:
-                                  BorderRadius.circular(7),
+                              borderRadius: BorderRadius.circular(5),
                               child: isImage
                                   ? Image.file(
                                       File(path),
                                       fit: BoxFit.cover,
-                                      width: 100,
-                                      height: 100,
+                                      width: 60,
+                                      height: 60,
                                       errorBuilder:
-                                          (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) {
-                                            return _buildFileIcon(
+                                          (context, error, stackTrace) {
+                                            return _buildFileIconCompact(
                                               fileName,
                                             );
                                           },
                                     )
-                                  : _buildFileIcon(
-                                      fileName,
-                                    ),
+                                  : _buildFileIconCompact(fileName),
                             ),
                           ),
-                          // Delete button overlay
                           Positioned(
-                            top: 4,
-                            right: 4,
+                            top: 2,
+                            right: 2,
                             child: GestureDetector(
-                              onTap: () =>
-                                  _removeAttachment(
-                                    projectId,
-                                    taskIndex,
-                                    attachmentIndex,
-                                  ),
+                              onTap: () => _removeAttachment(
+                                projectId,
+                                taskIndex,
+                                attachmentIndex,
+                              ),
                               child: Container(
-                                width: 24,
-                                height: 24,
+                                width: 16,
+                                height: 16,
                                 decoration: BoxDecoration(
-                                  color:
-                                      AppTheme.errorColor,
+                                  color: AppTheme.errorColor,
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme
-                                          .textPrimary
-                                          .withValues(
-                                            alpha: 0.2,
-                                          ),
-                                      blurRadius: 4,
-                                      offset: const Offset(
-                                        0,
-                                        2,
-                                      ),
-                                    ),
-                                  ],
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.close,
-                                  size: 14,
-                                  color:
-                                      AppTheme.surfaceColor,
+                                  size: 10,
+                                  color: Colors.white,
                                 ),
                               ),
                             ),
@@ -879,6 +828,41 @@ class _SubmissionFormScreenState
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFileIconCompact(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    IconData iconData;
+    Color iconColor;
+
+    switch (extension) {
+      case 'pdf':
+        iconData = Icons.picture_as_pdf;
+        iconColor = AppTheme.errorColor;
+        break;
+      case 'doc':
+      case 'docx':
+        iconData = Icons.description;
+        iconColor = AppTheme.primaryColor;
+        break;
+      default:
+        iconData = Icons.insert_drive_file;
+        iconColor = AppTheme.textSecondary;
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(iconData, size: 20, color: iconColor),
+        const SizedBox(height: 2),
+        Text(
+          fileName.length > 8 ? '${fileName.substring(0, 6)}...' : fileName,
+          style: const TextStyle(fontSize: 7),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 
@@ -901,61 +885,6 @@ class _SubmissionFormScreenState
       'heic',
       'heif',
     ].contains(extension);
-  }
-
-  Widget _buildFileIcon(String fileName) {
-    final extension = fileName
-        .toLowerCase()
-        .split('.')
-        .last;
-    IconData iconData;
-    Color iconColor;
-
-    switch (extension) {
-      case 'pdf':
-        iconData = Icons.picture_as_pdf;
-        iconColor = AppTheme.errorColor;
-        break;
-      case 'doc':
-      case 'docx':
-        iconData = Icons.description;
-        iconColor = AppTheme.primaryColor;
-        break;
-      case 'xls':
-      case 'xlsx':
-        iconData = Icons.table_chart;
-        iconColor = AppTheme.successColor;
-        break;
-      case 'zip':
-      case 'rar':
-      case '7z':
-        iconData = Icons.folder_zip;
-        iconColor = AppTheme.warningColor;
-        break;
-      default:
-        iconData = Icons.insert_drive_file;
-        iconColor = AppTheme.textSecondary;
-    }
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(iconData, size: 32, color: iconColor),
-        const SizedBox(height: 4),
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 4,
-          ),
-          child: Text(
-            fileName,
-            style: const TextStyle(fontSize: 9),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ],
-    );
   }
 }
 

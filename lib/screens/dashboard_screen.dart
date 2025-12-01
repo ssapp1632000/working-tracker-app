@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:window_manager/window_manager.dart';
 import '../core/extensions/context_extensions.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
@@ -10,9 +9,9 @@ import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
+import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
 import 'email_entry_screen.dart';
-import 'report_screen.dart';
 import 'submission_form_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -26,6 +25,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isHandlingNavigation = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final _windowService = WindowService();
+
+  @override
+  void initState() {
+    super.initState();
+    _windowService.setDashboardWindowSize();
+  }
 
   @override
   void dispose() {
@@ -158,436 +164,342 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Work Tracker'),
-        actions: MediaQuery.of(context).size.width > 200
-            ? [
-                // Minimize to Floating Widget Button
-                IconButton(
-                  icon: const Icon(Icons.picture_in_picture_alt),
-                  onPressed: () async {
-                    await ref
-                        .read(windowModeProvider.notifier)
-                        .switchToFloating();
-                  },
-                  tooltip: 'Minimize to Floating Widget',
+      backgroundColor: AppTheme.surfaceColor,
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 40.0, 16.0, 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header row with user info and actions
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // User greeting
+                Expanded(
+                  child: Text(
+                    'Hi, ${user?.name ?? 'User'}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                // Action buttons
+                Row(
+                  children: [
+                    // Floating mode button
+                    IconButton(
+                      icon: const Icon(Icons.picture_in_picture_alt, size: 20),
+                      onPressed: () async {
+                        await ref
+                            .read(windowModeProvider.notifier)
+                            .switchToFloating();
+                      },
+                      tooltip: 'Floating Widget',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    // Logout button
+                    IconButton(
+                      icon: const Icon(Icons.logout, size: 20),
+                      onPressed: _handleLogout,
+                      tooltip: 'Logout',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
 
-                // View Reports Button
-                // IconButton(
-                //   icon: const Icon(Icons.assessment),
-                //   onPressed: () {
-                //     context.push(const ReportScreen());
-                //   },
-                //   tooltip: 'View Reports',
-                // ),
-
-                // User Menu
-                PopupMenuButton<String>(
-                  icon: CircleAvatar(
-                    backgroundColor: AppTheme.surfaceColor,
-                    child: Text(
-                      user?.name.substring(0, 1).toUpperCase() ?? 'U',
-                      style: const TextStyle(
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
+            // Timer display
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  // Session time
+                  Text(
+                    DateTimeUtils.formatDuration(sessionTotalTime),
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: AppTheme.primaryColor,
+                      letterSpacing: 2,
                     ),
                   ),
-                  onSelected: (value) {
-                    if (value == 'logout') {
-                      _handleLogout();
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      enabled: false,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user?.name ?? '',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            user?.email ?? '',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
-                          ),
-                        ],
+                  if (currentTimer != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      currentTimer.projectName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: 'logout',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.logout,
-                            size: 20,
-                            color: AppTheme.primaryColor,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text('Logout'),
-                        ],
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Submit button (only show if there's time tracked)
+            if (sessionTotalTime.inSeconds > 0)
+              GradientButton(
+                onPressed: _handleSubmissionForm,
+                height: 40,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.send, size: 16, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'Submit Report',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(width: 8),
-              ]
-            : [], // Empty actions list when window is too narrow
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Hide body content when window is too narrow (during floating transition)
-          if (constraints.maxWidth < 200) {
-            return const SizedBox.shrink();
-          }
+              ),
+            if (sessionTotalTime.inSeconds > 0) const SizedBox(height: 12),
 
-          return Column(
-            children: [
-              // Current Timer Display - Single Row
-              if (currentTimer != null)
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  color: context.colorScheme.primary.withValues(alpha: 0.1),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+            // Search bar
+            TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search projects...',
+                hintStyle: const TextStyle(
+                  color: AppTheme.textHint,
+                  fontSize: 13,
+                ),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: AppTheme.textSecondary,
+                  size: 18,
+                ),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(
+                          Icons.clear,
+                          color: AppTheme.textSecondary,
+                          size: 16,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppTheme.backgroundColor,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                isDense: true,
+              ),
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Projects List
+            Expanded(
+              child: projectsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, stack) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Project name on the left
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.timer,
-                            color: context.colorScheme.primary,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            currentTimer.projectName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                      const Icon(
+                        Icons.error_outline,
+                        size: 32,
+                        color: AppTheme.errorColor,
                       ),
-
-                      // Timer display (Centered) - Shows session total time (sum of all projects)
+                      const SizedBox(height: 8),
                       Text(
-                        DateTimeUtils.formatDuration(sessionTotalTime),
+                        'Error loading projects',
                         style: TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'monospace',
-                          color: context.colorScheme.primary,
-                          letterSpacing: 4,
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
                         ),
                       ),
-
-                      // Submit button on the right
-                      GradientButtonWithIcon(
-                        onPressed: () async {
-                          // Navigate to submission form
-                          final projectsData = projectsAsync.value;
-                          if (projectsData != null && projectsData.isNotEmpty) {
-                            final result = await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => SubmissionFormScreen(
-                                  projects: projectsData,
-                                ),
-                              ),
-                            );
-
-                            // If submission was successful, reset all project times and refresh
-                            if (result == true && mounted) {
-                              await ref
-                                  .read(currentTimerProvider.notifier)
-                                  .stopTimer();
-                              await ref
-                                  .read(projectsProvider.notifier)
-                                  .resetAllProjectTimes();
-                              if (mounted) {
-                                context.showSuccessSnackBar(
-                                  'Session submitted successfully',
-                                );
-                              }
-                            }
-                          }
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          ref.read(projectsProvider.notifier).refreshProjects();
                         },
-                        icon: Icons.send,
-                        label: 'Submit Report',
-                        height: 44,
+                        child: const Text('Retry'),
                       ),
                     ],
                   ),
                 ),
-
-              // Projects List
-              Expanded(
-                child: projectsAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, stack) => Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: AppTheme.errorColor,
+                data: (projects) {
+                  if (projects.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No projects available',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
                         ),
-                        const SizedBox(height: 16),
-                        Text('Error: $error'),
-                        const SizedBox(height: 16),
-                        GradientButton(
-                          onPressed: () {
-                            ref
-                                .read(projectsProvider.notifier)
-                                .refreshProjects();
-                          },
-                          height: 44,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  data: (projects) {
-                    if (projects.isEmpty) {
-                      return const Center(child: Text('No projects available'));
-                    }
-
-                    final filteredProjects = _filterProjects(
-                      projects,
-                      currentTimer?.projectId,
+                      ),
                     );
+                  }
 
-                    return RefreshIndicator(
-                      onRefresh: () async {
-                        await ref
-                            .read(projectsProvider.notifier)
-                            .refreshProjects();
-                      },
+                  final filteredProjects = _filterProjects(
+                    projects,
+                    currentTimer?.projectId,
+                  );
+
+                  if (filteredProjects.isEmpty) {
+                    return Center(
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Search bar
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: (value) {
-                                setState(() {
-                                  _searchQuery = value;
-                                });
-                              },
-                              decoration: InputDecoration(
-                                hintText: 'Search projects...',
-                                hintStyle: const TextStyle(
-                                  color: AppTheme.textHint,
-                                  fontSize: 14,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.search,
-                                  color: AppTheme.textSecondary,
-                                  size: 22,
-                                ),
-                                suffixIcon: _searchQuery.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(
-                                          Icons.clear,
-                                          color: AppTheme.textSecondary,
-                                          size: 20,
-                                        ),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() {
-                                            _searchQuery = '';
-                                          });
-                                        },
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: AppTheme.backgroundColor,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                              ),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
+                          Icon(
+                            Icons.search_off,
+                            color: AppTheme.textHint,
+                            size: 32,
                           ),
-
-                          // Projects list
-                          Expanded(
-                            child: filteredProjects.isEmpty
-                                ? Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.search_off,
-                                          color: AppTheme.textHint,
-                                          size: 48,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          'No projects found',
-                                          style: TextStyle(
-                                            color: AppTheme.textSecondary,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      0,
-                                      16,
-                                      16,
-                                    ),
-                                    itemCount: filteredProjects.length,
-                                    itemBuilder: (context, index) {
-                                      final project = filteredProjects[index];
-                                      final isActive =
-                                          currentTimer?.projectId == project.id;
-
-                                      return Card(
-                                        margin: const EdgeInsets.only(
-                                          bottom: 8,
-                                        ),
-                                        elevation: isActive ? 2 : 0.5,
-                                        child: InkWell(
-                                          onTap: () async {
-                                            if (isActive) {
-                                              // Do nothing if clicking on active project - keep timer running
-                                            } else if (currentTimer != null) {
-                                              // Switch project if timer is running
-                                              await ref
-                                                  .read(
-                                                    currentTimerProvider
-                                                        .notifier,
-                                                  )
-                                                  .switchProject(project);
-                                              if (mounted) {
-                                                context.showSuccessSnackBar(
-                                                  'Switched to ${project.name}',
-                                                );
-                                              }
-                                            } else {
-                                              // Start timer for project
-                                              await ref
-                                                  .read(
-                                                    currentTimerProvider
-                                                        .notifier,
-                                                  )
-                                                  .startTimer(project);
-                                              if (mounted) {
-                                                context.showSuccessSnackBar(
-                                                  'Timer started',
-                                                );
-                                              }
-                                            }
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 12,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                // Project icon
-                                                Icon(
-                                                  Icons.apartment,
-                                                  size: 24,
-                                                  color: isActive
-                                                      ? AppTheme.primaryColor
-                                                      : AppTheme.textSecondary,
-                                                ),
-                                                const SizedBox(width: 12),
-
-                                                // Project name
-                                                Expanded(
-                                                  child: Text(
-                                                    project.name,
-                                                    style: TextStyle(
-                                                      fontSize: 15,
-                                                      color: isActive
-                                                          ? AppTheme
-                                                                .primaryColor
-                                                          : AppTheme
-                                                                .textPrimary,
-                                                      fontWeight: isActive
-                                                          ? FontWeight.w600
-                                                          : FontWeight.normal,
-                                                    ),
-                                                  ),
-                                                ),
-
-                                                // Timer for this project
-                                                if (project
-                                                        .totalTime
-                                                        .inSeconds >
-                                                    0)
-                                                  Text(
-                                                    DateTimeUtils.formatDuration(
-                                                      project.totalTime,
-                                                    ),
-                                                    style: const TextStyle(
-                                                      color: AppTheme
-                                                          .textSecondary,
-                                                      fontSize: 13,
-                                                      fontFamily: 'monospace',
-                                                    ),
-                                                  ),
-
-                                                // Active indicator
-                                                if (isActive)
-                                                  Container(
-                                                    margin:
-                                                        const EdgeInsets.only(
-                                                          left: 12,
-                                                        ),
-                                                    width: 8,
-                                                    height: 8,
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          color: AppTheme
-                                                              .successColor,
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No projects found',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
                     );
-                  },
-                ),
+                  }
+
+                  return ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: filteredProjects.length,
+                    itemBuilder: (context, index) {
+                      final project = filteredProjects[index];
+                      final isActive = currentTimer?.projectId == project.id;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                              : AppTheme.backgroundColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isActive
+                              ? Border.all(
+                                  color: AppTheme.primaryColor
+                                      .withValues(alpha: 0.3),
+                                )
+                              : null,
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () async {
+                            if (isActive) {
+                              // Do nothing if clicking on active project
+                            } else if (currentTimer != null) {
+                              // Switch project
+                              await ref
+                                  .read(currentTimerProvider.notifier)
+                                  .switchProject(project);
+                              if (mounted) {
+                                context.showSuccessSnackBar(
+                                  'Switched to ${project.name}',
+                                );
+                              }
+                            } else {
+                              // Start timer
+                              await ref
+                                  .read(currentTimerProvider.notifier)
+                                  .startTimer(project);
+                              if (mounted) {
+                                context.showSuccessSnackBar('Timer started');
+                              }
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                // Active indicator
+                                if (isActive)
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: AppTheme.successColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                // Project name
+                                Expanded(
+                                  child: Text(
+                                    project.name,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isActive
+                                          ? AppTheme.primaryColor
+                                          : AppTheme.textPrimary,
+                                      fontWeight: isActive
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // Time for this project
+                                if (project.totalTime.inSeconds > 0)
+                                  Text(
+                                    DateTimeUtils.formatDuration(
+                                      project.totalTime,
+                                    ),
+                                    style: const TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 11,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
-            ],
-          );
-        },
+            ),
+          ],
+        ),
       ),
     );
   }

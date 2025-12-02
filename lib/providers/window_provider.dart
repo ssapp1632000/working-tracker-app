@@ -31,12 +31,15 @@ class WindowModeNotifier extends StateNotifier<bool> {
     try {
       _logger.info('Switching to floating mode...');
 
-      // Configure window FIRST before changing UI state
+      // Set state FIRST to hide the dashboard immediately
+      // This prevents overflow errors during window resize
+      state = true;
+      _logger.info('Window mode: Floating (UI updated)');
+
+      // Then configure window to resize
       await _windowService.switchToFloatingMode();
 
-      // Then set state to trigger UI change after window is ready
-      state = true;
-      _logger.info('Window mode: Floating');
+      _logger.info('Window configured for floating mode');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to switch to floating mode',

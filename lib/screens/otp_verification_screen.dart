@@ -11,6 +11,7 @@ import '../services/email_service.dart';
 import '../services/window_service.dart';
 import '../screens/dashboard_screen.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/window_controls.dart';
 
 class OTPVerificationScreen extends ConsumerStatefulWidget {
   final String email;
@@ -265,16 +266,18 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.surfaceColor,
-      body: Focus(
-        onKeyEvent: _handleKeyEvent,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Icon
-              Icon(
+      body: Stack(
+        children: [
+          Focus(
+            onKeyEvent: _handleKeyEvent,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Icon
+                  Icon(
                 Icons.mark_email_read_outlined,
                 size: 48,
                 color: Theme.of(context).primaryColor,
@@ -457,9 +460,17 @@ class _OTPVerificationScreenState extends ConsumerState<OTPVerificationScreen> {
                     ),
                 textAlign: TextAlign.center,
               ),
-            ],
+              ],
+            ),
           ),
         ),
+          // Window control buttons (minimize, close)
+          const Positioned(
+            top: 8,
+            right: 8,
+            child: WindowControls(),
+          ),
+        ],
       ),
     );
   }

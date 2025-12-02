@@ -11,7 +11,7 @@ class FloatingWidgetConstants {
   // ============================================================================
 
   /// Width of the window when collapsed (showing only icon)
-  static const double collapsedWidth = 60.0;
+  static const double collapsedWidth = 30.0;
 
   /// Width of the window when expanded (showing full content)
   static const double expandedWidth = 280.0;
@@ -95,7 +95,9 @@ class FloatingWidgetConstants {
   // ============================================================================
 
   /// Duration for expand/collapse animations
-  static const Duration animationDuration = Duration(milliseconds: 300);
+  static const Duration animationDuration = Duration(
+    milliseconds: 300,
+  );
 
   // ============================================================================
   // SLIDE ANIMATION
@@ -109,7 +111,8 @@ class FloatingWidgetConstants {
 
   /// How much to offset the widget horizontally when slid out
   /// Widget slides right so only ~60px is visible
-  static const double slideOutOffset = fixedWidgetWidth - collapsedVisibleWidth;
+  static const double slideOutOffset =
+      fixedWidgetWidth - collapsedVisibleWidth;
 
   /// How much to offset the widget horizontally when slid in (fully visible)
   static const double slideInOffset = 0.0;

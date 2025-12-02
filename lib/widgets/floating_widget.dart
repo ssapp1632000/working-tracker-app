@@ -25,10 +25,12 @@ class FloatingWidget extends ConsumerStatefulWidget {
   const FloatingWidget({super.key});
 
   @override
-  ConsumerState<FloatingWidget> createState() => _FloatingWidgetState();
+  ConsumerState<FloatingWidget> createState() =>
+      _FloatingWidgetState();
 }
 
-class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
+class _FloatingWidgetState
+    extends ConsumerState<FloatingWidget> {
   // ============================================================================
   // STATE VARIABLES
   // ============================================================================
@@ -46,10 +48,12 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   String _searchQuery = '';
 
   /// Text controller for search field
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController =
+      TextEditingController();
 
   /// Current horizontal slide offset for the widget animation
-  double _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
+  double _currentSlideOffset =
+      FloatingWidgetConstants.slideOutOffset;
 
   /// Debounce timer for collapse to prevent flickering
   Timer? _collapseTimer;
@@ -70,30 +74,43 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Starts monitoring window position to snap back to right edge
   void _startPositionMonitoring() {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        !Platform.isMacOS)
+      return;
 
     // Check position every 2 seconds and snap back if moved
-    _snapBackTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      await _checkAndSnapToRightEdge();
-    });
+    _snapBackTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) async {
+        await _checkAndSnapToRightEdge();
+      },
+    );
   }
 
   /// Checks if window has been moved and snaps it back to right edge
   Future<void> _checkAndSnapToRightEdge() async {
     // IMPORTANT: Only snap in floating mode (60-280px wide window)
     // Don't snap the 380x580 dashboard window!
+    // Don't snap during hover or expansion - it interferes with animations
+    if (_isHovered || _isExpanded) {
+      return;
+    }
+
     try {
       final size = await windowManager.getSize();
 
       // If window is larger than floating widget, it's the dashboard - don't snap!
-      if (size.width > FloatingWidgetConstants.fixedWidgetWidth) {
+      if (size.width >
+          FloatingWidgetConstants.fixedWidgetWidth) {
         return;
       }
 
       final position = await windowManager.getPosition();
 
       // Get primary display dimensions
-      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      final primaryDisplay = await screenRetriever
+          .getPrimaryDisplay();
       final screenWidth = primaryDisplay.size.width;
 
       // Calculate right edge position
@@ -102,7 +119,9 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
       // If window has been moved away from right edge (more than 10px), snap it back
       if ((position.dx - rightEdgeX).abs() > 10) {
-        await windowManager.setPosition(Offset(rightEdgeX, position.dy));
+        await windowManager.setPosition(
+          Offset(rightEdgeX, position.dy),
+        );
       }
     } catch (e) {
       // Silently ignore snap errors
@@ -111,16 +130,22 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Ensures the window size is correct on initial render
   Future<void> _ensureCorrectWindowSize() async {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        !Platform.isMacOS)
+      return;
 
     try {
       // Wait a bit for the window manager to settle
-      await Future.delayed(const Duration(milliseconds: 250));
+      await Future.delayed(
+        const Duration(milliseconds: 250),
+      );
 
       final currentSize = await windowManager.getSize();
 
       // If window height is less than baseHeight, resize it aggressively
-      if (currentSize.height < FloatingWidgetConstants.baseHeight) {
+      if (currentSize.height <
+          FloatingWidgetConstants.baseHeight) {
         // Try multiple times to ensure the size sticks
         for (int i = 0; i < 3; i++) {
           await windowManager.setSize(
@@ -129,10 +154,13 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
               FloatingWidgetConstants.baseHeight,
             ),
           );
-          await Future.delayed(const Duration(milliseconds: 100));
+          await Future.delayed(
+            const Duration(milliseconds: 100),
+          );
 
           final checkSize = await windowManager.getSize();
-          if (checkSize.height >= FloatingWidgetConstants.baseHeight) {
+          if (checkSize.height >=
+              FloatingWidgetConstants.baseHeight) {
             break;
           }
         }
@@ -160,23 +188,34 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   ///
   /// [expanded] - Whether the dropdown is expanded
   /// [projectCount] - Number of projects to display in dropdown
-  Future<void> _updateWindowSize(bool expanded, int projectCount) async {
+  Future<void> _updateWindowSize(
+    bool expanded,
+    int projectCount,
+  ) async {
     // Only resize on desktop platforms
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        !Platform.isMacOS)
+      return;
 
     try {
       // Calculate height: base height + dropdown height if expanded
       final height = expanded
           ? FloatingWidgetConstants.baseHeight +
-              math.min(
-                FloatingWidgetConstants.maxDropdownHeight,
-                projectCount * FloatingWidgetConstants.projectItemHeight,
-              )
+                math.min(
+                  FloatingWidgetConstants.maxDropdownHeight,
+                  projectCount *
+                      FloatingWidgetConstants
+                          .projectItemHeight,
+                )
           : FloatingWidgetConstants.baseHeight;
 
       // Width is always fixed at 280px
       await windowManager.setSize(
-        Size(FloatingWidgetConstants.fixedWidgetWidth, height),
+        Size(
+          FloatingWidgetConstants.fixedWidgetWidth,
+          height,
+        ),
       );
     } catch (e) {
       // Silently ignore resize errors to prevent crashes
@@ -198,11 +237,11 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
     setState(() {
       _isHovered = true;
-      _currentSlideOffset = FloatingWidgetConstants.slideInOffset;
+      _currentSlideOffset =
+          FloatingWidgetConstants.slideInOffset;
     });
 
-    // Expand window to full width
-    _expandWindow();
+    // No window manipulation - just visual animation
   }
 
   /// Called when mouse exits the widget area
@@ -212,59 +251,20 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
     // Debounce collapse to prevent flickering
     _collapseTimer?.cancel();
-    _collapseTimer = Timer(const Duration(milliseconds: 150), () {
-      if (_isExpanded) return;
+    _collapseTimer = Timer(
+      const Duration(milliseconds: 150),
+      () {
+        if (_isExpanded) return;
 
-      setState(() {
-        _isHovered = false;
-        _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
-      });
+        setState(() {
+          _isHovered = false;
+          _currentSlideOffset =
+              FloatingWidgetConstants.slideOutOffset;
+        });
 
-      // Collapse window after animation completes
-      Future.delayed(FloatingWidgetConstants.animationDuration, () {
-        if (!_isHovered && !_isExpanded) {
-          _collapseWindow();
-        }
-      });
-    });
-  }
-
-  /// Expands the window to full width, keeping right edge fixed
-  Future<void> _expandWindow() async {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
-
-    try {
-      final currentPosition = await windowManager.getPosition();
-      final currentSize = await windowManager.getSize();
-
-      // Calculate new X to keep right edge fixed
-      final widthDelta = FloatingWidgetConstants.fixedWidgetWidth - currentSize.width;
-      final newX = currentPosition.dx - widthDelta;
-
-      await windowManager.setSize(Size(FloatingWidgetConstants.fixedWidgetWidth, currentSize.height));
-      await windowManager.setPosition(Offset(newX, currentPosition.dy));
-    } catch (e) {
-      // Silently ignore errors
-    }
-  }
-
-  /// Collapses the window to small width, keeping right edge fixed
-  Future<void> _collapseWindow() async {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
-
-    try {
-      final currentPosition = await windowManager.getPosition();
-      final currentSize = await windowManager.getSize();
-
-      // Calculate new X to keep right edge fixed
-      final widthDelta = currentSize.width - FloatingWidgetConstants.collapsedVisibleWidth;
-      final newX = currentPosition.dx + widthDelta;
-
-      await windowManager.setSize(Size(FloatingWidgetConstants.collapsedVisibleWidth, FloatingWidgetConstants.baseHeight));
-      await windowManager.setPosition(Offset(newX, currentPosition.dy));
-    } catch (e) {
-      // Silently ignore errors
-    }
+        // No window manipulation - just visual animation
+      },
+    );
   }
 
   /// Toggles the dropdown expansion state
@@ -287,10 +287,14 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       // Just close the dropdown
     } else if (currentTimer != null) {
       // Switch to different project if timer is running
-      await ref.read(currentTimerProvider.notifier).switchProject(project);
+      await ref
+          .read(currentTimerProvider.notifier)
+          .switchProject(project);
     } else {
       // Start timer for selected project
-      await ref.read(currentTimerProvider.notifier).startTimer(project);
+      await ref
+          .read(currentTimerProvider.notifier)
+          .startTimer(project);
     }
 
     // Close dropdown after selection
@@ -302,7 +306,9 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
 
   /// Switches back to the main dashboard window
   Future<void> _onMaximizeTap() async {
-    await ref.read(windowModeProvider.notifier).switchToMain();
+    await ref
+        .read(windowModeProvider.notifier)
+        .switchToMain();
   }
 
   // ============================================================================
@@ -312,16 +318,22 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   /// Calculates the dropdown height based on project count
   /// Includes extra space for search field
   double _getDropdownHeight(int projectCount) {
-    const searchFieldHeight = 56.0; // Height of search field
+    const searchFieldHeight =
+        56.0; // Height of search field
     final listHeight = math.min(
-      FloatingWidgetConstants.maxDropdownHeight - searchFieldHeight,
-      projectCount * FloatingWidgetConstants.projectItemHeight,
+      FloatingWidgetConstants.maxDropdownHeight -
+          searchFieldHeight,
+      projectCount *
+          FloatingWidgetConstants.projectItemHeight,
     );
     return searchFieldHeight + listHeight;
   }
 
   /// Filters projects based on search query and sorts them with active project first
-  List<dynamic> _filterProjects(List<dynamic> projects, String? activeProjectId) {
+  List<dynamic> _filterProjects(
+    List<dynamic> projects,
+    String? activeProjectId,
+  ) {
     // First, filter by search query
     List<dynamic> filtered = projects;
 
@@ -330,19 +342,24 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       filtered = projects.where((project) {
         final name = project.name?.toLowerCase() ?? '';
         final client = project.client?.toLowerCase() ?? '';
-        final description = project.description?.toLowerCase() ?? '';
+        final description =
+            project.description?.toLowerCase() ?? '';
 
         return name.contains(query) ||
-               client.contains(query) ||
-               description.contains(query);
+            client.contains(query) ||
+            description.contains(query);
       }).toList();
     }
 
     // Sort projects: active project first, then maintain original order for the rest
     if (activeProjectId != null) {
       // Separate active and non-active projects to maintain stable order
-      final activeProject = filtered.where((p) => p.id == activeProjectId).toList();
-      final otherProjects = filtered.where((p) => p.id != activeProjectId).toList();
+      final activeProject = filtered
+          .where((p) => p.id == activeProjectId)
+          .toList();
+      final otherProjects = filtered
+          .where((p) => p.id != activeProjectId)
+          .toList();
 
       // Return with active project first, followed by others in original order
       return [...activeProject, ...otherProjects];
@@ -354,7 +371,8 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   /// Calculates the total widget height based on expansion state
   double _getWidgetHeight(int projectCount) {
     return _isExpanded
-        ? FloatingWidgetConstants.baseHeight + _getDropdownHeight(projectCount)
+        ? FloatingWidgetConstants.baseHeight +
+              _getDropdownHeight(projectCount)
         : FloatingWidgetConstants.baseHeight;
   }
 
@@ -367,15 +385,26 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     // Watch providers for data updates
     final projectsAsync = ref.watch(projectsProvider);
     final currentTimer = ref.watch(currentTimerProvider);
-    final currentProject = ref.watch(selectedProjectProvider);
-    final sessionTotalTime = ref.watch(sessionTotalTimeProvider);
+    final currentProject = ref.watch(
+      selectedProjectProvider,
+    );
+    final sessionTotalTime = ref.watch(
+      sessionTotalTimeProvider,
+    );
 
     // Extract projects list from async state (empty list if loading/error)
-    final projects = projectsAsync.whenOrNull(data: (p) => p) ?? [];
+    final projects =
+        projectsAsync.whenOrNull(data: (p) => p) ?? [];
 
     return Container(
-      color: Colors.transparent, // Fully transparent background
-      child: _buildAnimatedContainer(projects, currentProject, currentTimer, sessionTotalTime),
+      color: Colors
+          .transparent, // Fully transparent background
+      child: _buildAnimatedContainer(
+        projects,
+        currentProject,
+        currentTimer,
+        sessionTotalTime,
+      ),
     );
   }
 
@@ -395,7 +424,8 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
         children: [
           // The sliding content
           AnimatedPositioned(
-            duration: FloatingWidgetConstants.animationDuration,
+            duration:
+                FloatingWidgetConstants.animationDuration,
             curve: Curves.easeOutCubic,
             right: -_currentSlideOffset,
             top: 0,
@@ -403,7 +433,12 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
             width: FloatingWidgetConstants.fixedWidgetWidth,
             child: SizedBox(
               height: _getWidgetHeight(projects.length),
-              child: _buildMainContainer(projects, currentProject, currentTimer, sessionTotalTime),
+              child: _buildMainContainer(
+                projects,
+                currentProject,
+                currentTimer,
+                sessionTotalTime,
+              ),
             ),
           ),
         ],
@@ -423,16 +458,22 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
         decoration: BoxDecoration(
           color: AppTheme.surfaceColor,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(FloatingWidgetConstants.borderRadius),
-            bottomLeft: Radius.circular(FloatingWidgetConstants.borderRadius),
+            topLeft: Radius.circular(
+              FloatingWidgetConstants.borderRadius,
+            ),
+            bottomLeft: Radius.circular(
+              FloatingWidgetConstants.borderRadius,
+            ),
           ),
           boxShadow: [
             BoxShadow(
               color: AppTheme.textPrimary.withValues(
-                alpha: FloatingWidgetConstants.shadowOpacity,
+                alpha:
+                    FloatingWidgetConstants.shadowOpacity,
               ),
               spreadRadius: 0,
-              blurRadius: FloatingWidgetConstants.shadowBlurRadius,
+              blurRadius:
+                  FloatingWidgetConstants.shadowBlurRadius,
               offset: const Offset(
                 FloatingWidgetConstants.shadowOffsetX,
                 FloatingWidgetConstants.shadowOffsetY,
@@ -441,15 +482,20 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
           ],
           border: Border.all(
             color: AppTheme.borderColor.withValues(
-              alpha: FloatingWidgetConstants.borderColorOpacity,
+              alpha: FloatingWidgetConstants
+                  .borderColorOpacity,
             ),
             width: FloatingWidgetConstants.borderWidth,
           ),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(FloatingWidgetConstants.borderRadius),
-            bottomLeft: Radius.circular(FloatingWidgetConstants.borderRadius),
+            topLeft: Radius.circular(
+              FloatingWidgetConstants.borderRadius,
+            ),
+            bottomLeft: Radius.circular(
+              FloatingWidgetConstants.borderRadius,
+            ),
           ),
           child: Material(
             color: Colors.transparent,
@@ -457,14 +503,25 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
               builder: (context, constraints) {
                 // If window height is too small, wrap in SingleChildScrollView
                 // to prevent overflow errors during window resize transitions
-                if (constraints.maxHeight < FloatingWidgetConstants.baseHeight) {
+                if (constraints.maxHeight <
+                    FloatingWidgetConstants.baseHeight) {
                   return SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
+                    physics:
+                        const NeverScrollableScrollPhysics(),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildMainRow(projects, currentProject, currentTimer, sessionTotalTime),
-                        if (_isExpanded) _buildProjectList(projects, currentTimer),
+                        _buildMainRow(
+                          projects,
+                          currentProject,
+                          currentTimer,
+                          sessionTotalTime,
+                        ),
+                        if (_isExpanded)
+                          _buildProjectList(
+                            projects,
+                            currentTimer,
+                          ),
                       ],
                     ),
                   );
@@ -474,8 +531,17 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildMainRow(projects, currentProject, currentTimer, sessionTotalTime),
-                    if (_isExpanded) _buildProjectList(projects, currentTimer),
+                    _buildMainRow(
+                      projects,
+                      currentProject,
+                      currentTimer,
+                      sessionTotalTime,
+                    ),
+                    if (_isExpanded)
+                      _buildProjectList(
+                        projects,
+                        currentTimer,
+                      ),
                   ],
                 );
               },
@@ -499,23 +565,32 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
       ),
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: FloatingWidgetConstants.expandedHorizontalPadding,
+          horizontal: FloatingWidgetConstants
+              .expandedHorizontalPadding,
           vertical: FloatingWidgetConstants.verticalPadding,
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.start, // Always left-aligned
+          mainAxisAlignment: MainAxisAlignment
+              .start, // Always left-aligned
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Icon - always visible
             _buildProjectIcon(),
-            SizedBox(width: FloatingWidgetConstants.iconTextSpacing),
+            SizedBox(
+              width:
+                  FloatingWidgetConstants.iconTextSpacing,
+            ),
 
             // Content - always visible (no animation needed since whole widget slides)
             Expanded(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildProjectInfo(currentProject, currentTimer, sessionTotalTime),
+                  _buildProjectInfo(
+                    currentProject,
+                    currentTimer,
+                    sessionTotalTime,
+                  ),
                   _buildDropdownArrow(projects),
                   _buildMaximizeButton(),
                 ],
@@ -537,7 +612,11 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   }
 
   /// Builds the project name and timer display
-  Widget _buildProjectInfo(dynamic currentProject, dynamic currentTimer, Duration sessionTotalTime) {
+  Widget _buildProjectInfo(
+    dynamic currentProject,
+    dynamic currentTimer,
+    Duration sessionTotalTime,
+  ) {
     return Flexible(
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -556,23 +635,31 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
                     color: currentProject == null
                         ? AppTheme.textSecondary
                         : AppTheme.textPrimary,
-                    fontSize: FloatingWidgetConstants.projectNameFontSize,
+                    fontSize: FloatingWidgetConstants
+                        .projectNameFontSize,
                     fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
-                SizedBox(height: FloatingWidgetConstants.nameTimerSpacing),
+                SizedBox(
+                  height: FloatingWidgetConstants
+                      .nameTimerSpacing,
+                ),
 
                 // Timer display - Shows session total time (sum of all projects)
                 Text(
-                  DateTimeUtils.formatDuration(sessionTotalTime),
+                  DateTimeUtils.formatDuration(
+                    sessionTotalTime,
+                  ),
                   style: const TextStyle(
                     color: AppTheme.textSecondary,
-                    fontSize: FloatingWidgetConstants.timerFontSize,
+                    fontSize: FloatingWidgetConstants
+                        .timerFontSize,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
-                    letterSpacing: FloatingWidgetConstants.timerLetterSpacing,
+                    letterSpacing: FloatingWidgetConstants
+                        .timerLetterSpacing,
                   ),
                   overflow: TextOverflow.clip,
                   maxLines: 1,
@@ -596,14 +683,20 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     return InkWell(
       onTap: () async {
         // Set navigation request for submission form
-        ref.read(navigationRequestProvider.notifier).requestSubmissionForm();
+        ref
+            .read(navigationRequestProvider.notifier)
+            .requestSubmissionForm();
         // Switch to main window - dashboard will handle navigation
-        await ref.read(windowModeProvider.notifier).switchToMain();
+        await ref
+            .read(windowModeProvider.notifier)
+            .switchToMain();
       },
       child: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: AppTheme.successColor.withValues(alpha: 0.1),
+          color: AppTheme.successColor.withValues(
+            alpha: 0.1,
+          ),
           borderRadius: BorderRadius.circular(6),
         ),
         child: const Icon(
@@ -620,11 +713,15 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     return GestureDetector(
       onTap: () => _toggleDropdown(projects.length),
       child: AnimatedRotation(
-        turns: _isExpanded ? 0.5 : 0, // Rotate 180° when expanded
+        turns: _isExpanded
+            ? 0.5
+            : 0, // Rotate 180° when expanded
         duration: FloatingWidgetConstants.animationDuration,
-        curve: Curves.easeInOutQuart, // Smooth rotation curve
+        curve:
+            Curves.easeInOutQuart, // Smooth rotation curve
         child: const Icon(
-          Icons.swap_horiz, // Changed from arrow_drop_down to swap_horiz (switch icon)
+          Icons
+              .swap_horiz, // Changed from arrow_drop_down to swap_horiz (switch icon)
           color: AppTheme.textSecondary,
           size: 20,
         ),
@@ -650,8 +747,14 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   }
 
   /// Builds the scrollable project list dropdown with search
-  Widget _buildProjectList(List<dynamic> projects, dynamic currentTimer) {
-    final filteredProjects = _filterProjects(projects, currentTimer?.projectId);
+  Widget _buildProjectList(
+    List<dynamic> projects,
+    dynamic currentTimer,
+  ) {
+    final filteredProjects = _filterProjects(
+      projects,
+      currentTimer?.projectId,
+    );
 
     return Container(
       height: _getDropdownHeight(filteredProjects.length),
@@ -659,9 +762,11 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
         border: Border(
           top: BorderSide(
             color: AppTheme.borderColor.withValues(
-              alpha: FloatingWidgetConstants.dropdownBorderOpacity,
+              alpha: FloatingWidgetConstants
+                  .dropdownBorderOpacity,
             ),
-            width: FloatingWidgetConstants.dropdownBorderWidth,
+            width:
+                FloatingWidgetConstants.dropdownBorderWidth,
           ),
         ),
       ),
@@ -694,7 +799,10 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
   /// Builds the search field with icon
   Widget _buildSearchField() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
       child: TextField(
         controller: _searchController,
         onChanged: (value) {
@@ -785,31 +893,49 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
     final isActive = currentTimer?.projectId == project.id;
 
     return InkWell(
-      onTap: () => _onProjectTap(project, isActive, currentTimer, projectCount),
+      onTap: () => _onProjectTap(
+        project,
+        isActive,
+        currentTimer,
+        projectCount,
+      ),
       child: Container(
         height: FloatingWidgetConstants.projectItemHeight,
         padding: const EdgeInsets.symmetric(
-          horizontal: FloatingWidgetConstants.dropdownItemHorizontalPadding,
-          vertical: FloatingWidgetConstants.dropdownItemVerticalPadding,
+          horizontal: FloatingWidgetConstants
+              .dropdownItemHorizontalPadding,
+          vertical: FloatingWidgetConstants
+              .dropdownItemVerticalPadding,
         ),
         child: Row(
           children: [
             // Project icon
             Icon(
               Icons.apartment,
-              size: FloatingWidgetConstants.dropdownProjectIconSize,
-              color: isActive ? AppTheme.primaryColor : AppTheme.textSecondary,
+              size: FloatingWidgetConstants
+                  .dropdownProjectIconSize,
+              color: isActive
+                  ? AppTheme.primaryColor
+                  : AppTheme.textSecondary,
             ),
-            SizedBox(width: FloatingWidgetConstants.dropdownIconSpacing),
+            SizedBox(
+              width: FloatingWidgetConstants
+                  .dropdownIconSpacing,
+            ),
 
             // Project name (takes remaining space)
             Expanded(
               child: Text(
                 project.name,
                 style: TextStyle(
-                  color: isActive ? AppTheme.primaryColor : AppTheme.textPrimary,
-                  fontSize: FloatingWidgetConstants.dropdownProjectFontSize,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                  color: isActive
+                      ? AppTheme.primaryColor
+                      : AppTheme.textPrimary,
+                  fontSize: FloatingWidgetConstants
+                      .dropdownProjectFontSize,
+                  fontWeight: isActive
+                      ? FontWeight.w600
+                      : FontWeight.normal,
                 ),
               ),
             ),
@@ -817,10 +943,13 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
             // Project total time (if > 0)
             if (project.totalTime.inSeconds > 0)
               Text(
-                DateTimeUtils.formatDuration(project.totalTime),
+                DateTimeUtils.formatDuration(
+                  project.totalTime,
+                ),
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
-                  fontSize: FloatingWidgetConstants.dropdownTimeFontSize,
+                  fontSize: FloatingWidgetConstants
+                      .dropdownTimeFontSize,
                   fontFamily: 'monospace',
                 ),
               ),
@@ -829,10 +958,13 @@ class _FloatingWidgetState extends ConsumerState<FloatingWidget> {
             if (isActive)
               Container(
                 margin: const EdgeInsets.only(
-                  left: FloatingWidgetConstants.activeIndicatorMargin,
+                  left: FloatingWidgetConstants
+                      .activeIndicatorMargin,
                 ),
-                width: FloatingWidgetConstants.activeIndicatorSize,
-                height: FloatingWidgetConstants.activeIndicatorSize,
+                width: FloatingWidgetConstants
+                    .activeIndicatorSize,
+                height: FloatingWidgetConstants
+                    .activeIndicatorSize,
                 decoration: const BoxDecoration(
                   color: AppTheme.successColor,
                   shape: BoxShape.circle,

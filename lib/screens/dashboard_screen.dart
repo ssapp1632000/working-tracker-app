@@ -11,6 +11,7 @@ import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/window_controls.dart';
 import 'email_entry_screen.dart';
 import 'submission_form_screen.dart';
 
@@ -165,13 +166,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.surfaceColor,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16.0, 40.0, 16.0, 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header row with user info and actions
-            Row(
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 40.0, 16.0, 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header row with user info and actions
+                Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // User greeting
@@ -498,8 +501,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 },
               ),
             ),
-          ],
-        ),
+              ],
+            ),
+          ),
+          // Window control buttons (minimize, close)
+          const Positioned(
+            top: 8,
+            right: 8,
+            child: WindowControls(),
+          ),
+        ],
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../services/otp_service.dart';
 import '../services/email_service.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/window_controls.dart';
 import 'otp_verification_screen.dart';
 
 class EmailEntryScreen extends ConsumerStatefulWidget {
@@ -111,17 +112,19 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.surfaceColor,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Title
-              Text(
-                'Welcome',
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Title
+                  Text(
+                    'Welcome',
                 style: Theme.of(context)
                     .textTheme
                     .headlineMedium
@@ -199,9 +202,17 @@ class _EmailEntryScreenState extends ConsumerState<EmailEntryScreen> {
                     ),
                 textAlign: TextAlign.center,
               ),
-            ],
+              ],
+            ),
           ),
         ),
+          // Window control buttons (minimize, close)
+          const Positioned(
+            top: 8,
+            right: 8,
+            child: WindowControls(),
+          ),
+        ],
       ),
     );
   }

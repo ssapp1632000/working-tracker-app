@@ -11,6 +11,7 @@ import '../core/utils/date_time_utils.dart';
 import '../models/project.dart';
 import '../models/task_submission.dart';
 import '../providers/auth_provider.dart';
+import '../providers/task_provider.dart';
 import '../services/report_submission_service.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
@@ -44,17 +45,34 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
   void _initializeFormData() {
     _projectTasks = {};
-    // Initialize with one task per project that has time tracked
+    // Initialize with tasks for each project that has time tracked
     for (var project in widget.projects.where(
       (p) => p.totalTime.inSeconds > 0,
     )) {
-      _projectTasks[project.id] = [
-        TaskFormData(
-          taskNameController: TextEditingController(),
-          taskDescController: TextEditingController(),
-          attachments: [],
-        ),
-      ];
+      // Get pre-added tasks from the provider
+      final preAddedTasks = ref.read(projectTasksProvider(project.id));
+
+      if (preAddedTasks.isNotEmpty) {
+        // Create TaskFormData from pre-added tasks
+        _projectTasks[project.id] = preAddedTasks
+            .map(
+              (task) => TaskFormData(
+                taskNameController: TextEditingController(text: task.taskName),
+                taskDescController: TextEditingController(),
+                attachments: [],
+              ),
+            )
+            .toList();
+      } else {
+        // Fallback: create one empty task if no pre-added tasks
+        _projectTasks[project.id] = [
+          TaskFormData(
+            taskNameController: TextEditingController(),
+            taskDescController: TextEditingController(),
+            attachments: [],
+          ),
+        ];
+      }
     }
   }
 
@@ -242,6 +260,8 @@ class _SubmissionFormScreenState extends ConsumerState<SubmissionFormScreen> {
 
       if (mounted) {
         if (result['success'] == true) {
+          // Clear all persisted tasks after successful submission
+          await ref.read(tasksProvider.notifier).clearAllTasks();
           context.showSuccessSnackBar('Report submitted successfully!');
           Navigator.of(context).pop(true); // Return true to indicate success
         } else {

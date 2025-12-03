@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../models/project.dart';
 import '../models/time_entry.dart';
 import '../models/report.dart';
+import '../models/task.dart';
 import 'logger_service.dart';
 
 class StorageService {
@@ -17,6 +18,7 @@ class StorageService {
   late Box<Project> _projectBox;
   late Box<TimeEntry> _timeEntryBox;
   late Box<Report> _reportBox;
+  late Box<Task> _taskBox;
 
   StorageService._internal();
 
@@ -35,12 +37,14 @@ class StorageService {
       Hive.registerAdapter(ProjectAdapter());
       Hive.registerAdapter(TimeEntryAdapter());
       Hive.registerAdapter(ReportAdapter());
+      Hive.registerAdapter(TaskAdapter());
 
       // Open boxes
       _userBox = await Hive.openBox<User>(AppConstants.hiveBoxUser);
       _projectBox = await Hive.openBox<Project>(AppConstants.hiveBoxProjects);
       _timeEntryBox = await Hive.openBox<TimeEntry>(AppConstants.hiveBoxTimeEntries);
       _reportBox = await Hive.openBox<Report>(AppConstants.hiveBoxReports);
+      _taskBox = await Hive.openBox<Task>(AppConstants.hiveBoxTasks);
 
       _logger.info('Hive storage initialized successfully');
     } catch (e, stackTrace) {
@@ -232,6 +236,66 @@ class StorageService {
     }
   }
 
+  // Task operations
+  Future<void> saveTask(Task task) async {
+    try {
+      await _taskBox.put(task.id, task);
+      _logger.debug('Task saved: ${task.taskName}');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to save task', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  List<Task> getAllTasks() {
+    try {
+      return _taskBox.values.toList();
+    } catch (e, stackTrace) {
+      _logger.error('Failed to get tasks', e, stackTrace);
+      return [];
+    }
+  }
+
+  List<Task> getTasksByProject(String projectId) {
+    try {
+      return _taskBox.values
+          .where((task) => task.projectId == projectId)
+          .toList();
+    } catch (e, stackTrace) {
+      _logger.error('Failed to get tasks for project', e, stackTrace);
+      return [];
+    }
+  }
+
+  Task? getTask(String id) {
+    try {
+      return _taskBox.get(id);
+    } catch (e, stackTrace) {
+      _logger.error('Failed to get task', e, stackTrace);
+      return null;
+    }
+  }
+
+  Future<void> deleteTask(String id) async {
+    try {
+      await _taskBox.delete(id);
+      _logger.info('Task deleted: $id');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to delete task', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> clearAllTasks() async {
+    try {
+      await _taskBox.clear();
+      _logger.info('All tasks cleared');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to clear tasks', e, stackTrace);
+      rethrow;
+    }
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     try {
@@ -239,6 +303,7 @@ class StorageService {
       await _projectBox.clear();
       await _timeEntryBox.clear();
       await _reportBox.clear();
+      await _taskBox.clear();
       _logger.warning('All storage cleared');
     } catch (e, stackTrace) {
       _logger.error('Failed to clear storage', e, stackTrace);
@@ -253,6 +318,7 @@ class StorageService {
       await _projectBox.close();
       await _timeEntryBox.close();
       await _reportBox.close();
+      await _taskBox.close();
       _logger.info('Storage closed');
     } catch (e, stackTrace) {
       _logger.error('Failed to close storage', e, stackTrace);

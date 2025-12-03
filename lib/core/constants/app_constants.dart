@@ -16,6 +16,7 @@ class AppConstants {
   static const String hiveBoxProjects = 'projects_box';
   static const String hiveBoxTimeEntries = 'time_entries_box';
   static const String hiveBoxReports = 'reports_box';
+  static const String hiveBoxTasks = 'tasks_box';
 
   // API Endpoints (for future use)
   static const String apiBaseUrl = 'https://api.example.com';

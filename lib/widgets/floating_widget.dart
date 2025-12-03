@@ -7,11 +7,15 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
+import '../core/extensions/context_extensions.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
+import '../providers/task_provider.dart';
 import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
 import 'floating_widget_constants.dart';
+import 'inline_task_entry.dart';
+import 'task_chip.dart';
 
 /// A floating widget that displays project timer information
 ///
@@ -50,6 +54,9 @@ class _FloatingWidgetState
   /// Text controller for search field
   final TextEditingController _searchController =
       TextEditingController();
+
+  /// Which project has the task entry expanded
+  String? _expandedTaskEntryProjectId;
 
   /// Current horizontal slide offset for the widget animation
   double _currentSlideOffset =
@@ -891,88 +898,172 @@ class _FloatingWidgetState
   ) {
     // Check if this project's timer is currently active
     final isActive = currentTimer?.projectId == project.id;
+    final projectTasks = ref.watch(projectTasksProvider(project.id));
+    final isTaskEntryExpanded = _expandedTaskEntryProjectId == project.id;
 
-    return InkWell(
-      onTap: () => _onProjectTap(
-        project,
-        isActive,
-        currentTimer,
-        projectCount,
-      ),
-      child: Container(
-        height: FloatingWidgetConstants.projectItemHeight,
-        padding: const EdgeInsets.symmetric(
-          horizontal: FloatingWidgetConstants
-              .dropdownItemHorizontalPadding,
-          vertical: FloatingWidgetConstants
-              .dropdownItemVerticalPadding,
-        ),
-        child: Row(
-          children: [
-            // Project icon
-            Icon(
-              Icons.apartment,
-              size: FloatingWidgetConstants
-                  .dropdownProjectIconSize,
-              color: isActive
-                  ? AppTheme.primaryColor
-                  : AppTheme.textSecondary,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Project row
+        InkWell(
+          onTap: () => _onProjectTap(
+            project,
+            isActive,
+            currentTimer,
+            projectCount,
+          ),
+          child: Container(
+            height: FloatingWidgetConstants.projectItemHeight,
+            padding: const EdgeInsets.symmetric(
+              horizontal: FloatingWidgetConstants
+                  .dropdownItemHorizontalPadding,
+              vertical: FloatingWidgetConstants
+                  .dropdownItemVerticalPadding,
             ),
-            SizedBox(
-              width: FloatingWidgetConstants
-                  .dropdownIconSpacing,
-            ),
-
-            // Project name (takes remaining space)
-            Expanded(
-              child: Text(
-                project.name,
-                style: TextStyle(
+            child: Row(
+              children: [
+                // Project icon
+                Icon(
+                  Icons.apartment,
+                  size: FloatingWidgetConstants
+                      .dropdownProjectIconSize,
                   color: isActive
                       ? AppTheme.primaryColor
-                      : AppTheme.textPrimary,
-                  fontSize: FloatingWidgetConstants
-                      .dropdownProjectFontSize,
-                  fontWeight: isActive
-                      ? FontWeight.w600
-                      : FontWeight.normal,
+                      : AppTheme.textSecondary,
                 ),
-              ),
+                SizedBox(
+                  width: FloatingWidgetConstants
+                      .dropdownIconSpacing,
+                ),
+
+                // Project name (takes remaining space)
+                Expanded(
+                  child: Text(
+                    project.name,
+                    style: TextStyle(
+                      color: isActive
+                          ? AppTheme.primaryColor
+                          : AppTheme.textPrimary,
+                      fontSize: FloatingWidgetConstants
+                          .dropdownProjectFontSize,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+
+                // Project total time (if > 0)
+                if (project.totalTime.inSeconds > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Text(
+                      DateTimeUtils.formatDuration(
+                        project.totalTime,
+                      ),
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: FloatingWidgetConstants
+                            .dropdownTimeFontSize,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+
+                // Active indicator dot (green circle)
+                if (isActive)
+                  Container(
+                    margin: const EdgeInsets.only(
+                      right: 6,
+                    ),
+                    width: FloatingWidgetConstants
+                        .activeIndicatorSize,
+                    height: FloatingWidgetConstants
+                        .activeIndicatorSize,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.successColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+
+                // Add task button
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isTaskEntryExpanded) {
+                        _expandedTaskEntryProjectId = null;
+                      } else {
+                        _expandedTaskEntryProjectId = project.id;
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(
+                      isTaskEntryExpanded ? Icons.remove : Icons.add,
+                      size: 16,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              ],
             ),
-
-            // Project total time (if > 0)
-            if (project.totalTime.inSeconds > 0)
-              Text(
-                DateTimeUtils.formatDuration(
-                  project.totalTime,
-                ),
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: FloatingWidgetConstants
-                      .dropdownTimeFontSize,
-                  fontFamily: 'monospace',
-                ),
-              ),
-
-            // Active indicator dot (green circle)
-            if (isActive)
-              Container(
-                margin: const EdgeInsets.only(
-                  left: FloatingWidgetConstants
-                      .activeIndicatorMargin,
-                ),
-                width: FloatingWidgetConstants
-                    .activeIndicatorSize,
-                height: FloatingWidgetConstants
-                    .activeIndicatorSize,
-                decoration: const BoxDecoration(
-                  color: AppTheme.successColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-          ],
+          ),
         ),
-      ),
+
+        // Task chips and inline entry (only visible when expanded)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          child: isTaskEntryExpanded
+              ? Padding(
+                  padding: const EdgeInsets.only(
+                    left: 12,
+                    right: 12,
+                  ),
+                  child: Column(
+                    children: [
+                      // Task chips
+                      ...projectTasks.map(
+                        (task) => TaskChip(
+                          task: task,
+                          isCompact: true,
+                          onEdit: (newName) async {
+                            final updatedTask = task.copyWith(
+                              taskName: newName,
+                            );
+                            await ref
+                                .read(tasksProvider.notifier)
+                                .updateTask(updatedTask);
+                          },
+                          onDelete: () async {
+                            await ref
+                                .read(tasksProvider.notifier)
+                                .deleteTask(task.id);
+                          },
+                        ),
+                      ),
+                      // Inline task entry
+                      InlineTaskEntry(
+                        projectId: project.id,
+                        isCompact: true,
+                        onSubmit: (taskName) async {
+                          await ref.read(tasksProvider.notifier).createTask(
+                                projectId: project.id,
+                                taskName: taskName,
+                              );
+                          if (mounted) {
+                            context.showSuccessSnackBar('Task added');
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

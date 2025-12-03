@@ -7,11 +7,14 @@ import '../models/project.dart';
 import '../providers/auth_provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
+import '../providers/task_provider.dart';
 import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/window_controls.dart';
+import '../widgets/inline_task_entry.dart';
+import '../widgets/task_chip.dart';
 import 'email_entry_screen.dart';
 import 'submission_form_screen.dart';
 
@@ -25,6 +28,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isHandlingNavigation = false;
   String _searchQuery = '';
+  String? _expandedTaskEntryProjectId;
   final TextEditingController _searchController = TextEditingController();
   final _windowService = WindowService();
 
@@ -405,96 +409,186 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     itemBuilder: (context, index) {
                       final project = filteredProjects[index];
                       final isActive = currentTimer?.projectId == project.id;
+                      final projectTasks =
+                          ref.watch(projectTasksProvider(project.id));
+                      final isTaskEntryExpanded =
+                          _expandedTaskEntryProjectId == project.id;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? AppTheme.primaryColor.withValues(alpha: 0.1)
-                              : AppTheme.backgroundColor,
-                          borderRadius: BorderRadius.circular(8),
-                          border: isActive
-                              ? Border.all(
-                                  color: AppTheme.primaryColor
-                                      .withValues(alpha: 0.3),
-                                )
-                              : null,
-                        ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () async {
-                            if (isActive) {
-                              // Do nothing if clicking on active project
-                            } else if (currentTimer != null) {
-                              // Switch project
-                              await ref
-                                  .read(currentTimerProvider.notifier)
-                                  .switchProject(project);
-                              if (mounted) {
-                                context.showSuccessSnackBar(
-                                  'Switched to ${project.name}',
-                                );
-                              }
-                            } else {
-                              // Start timer
-                              await ref
-                                  .read(currentTimerProvider.notifier)
-                                  .startTimer(project);
-                              if (mounted) {
-                                context.showSuccessSnackBar('Timer started');
-                              }
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Project card
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                                  : AppTheme.backgroundColor,
+                              borderRadius: BorderRadius.circular(8),
+                              border: isActive
+                                  ? Border.all(
+                                      color: AppTheme.primaryColor
+                                          .withValues(alpha: 0.3),
+                                    )
+                                  : null,
                             ),
-                            child: Row(
-                              children: [
-                                // Active indicator
-                                if (isActive)
-                                  Container(
-                                    margin: const EdgeInsets.only(right: 8),
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      color: AppTheme.successColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                // Project name
-                                Expanded(
-                                  child: Text(
-                                    project.name,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isActive
-                                          ? AppTheme.primaryColor
-                                          : AppTheme.textPrimary,
-                                      fontWeight: isActive
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () async {
+                                if (isActive) {
+                                  // Do nothing if clicking on active project
+                                } else if (currentTimer != null) {
+                                  // Switch project
+                                  await ref
+                                      .read(currentTimerProvider.notifier)
+                                      .switchProject(project);
+                                  if (mounted) {
+                                    context.showSuccessSnackBar(
+                                      'Switched to ${project.name}',
+                                    );
+                                  }
+                                } else {
+                                  // Start timer
+                                  await ref
+                                      .read(currentTimerProvider.notifier)
+                                      .startTimer(project);
+                                  if (mounted) {
+                                    context.showSuccessSnackBar('Timer started');
+                                  }
+                                }
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
                                 ),
-                                // Time for this project
-                                if (project.totalTime.inSeconds > 0)
-                                  Text(
-                                    DateTimeUtils.formatDuration(
-                                      project.totalTime,
+                                child: Row(
+                                  children: [
+                                    // Active indicator
+                                    if (isActive)
+                                      Container(
+                                        margin: const EdgeInsets.only(right: 8),
+                                        width: 6,
+                                        height: 6,
+                                        decoration: const BoxDecoration(
+                                          color: AppTheme.successColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    // Project name
+                                    Expanded(
+                                      child: Text(
+                                        project.name,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isActive
+                                              ? AppTheme.primaryColor
+                                              : AppTheme.textPrimary,
+                                          fontWeight: isActive
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    style: const TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
+                                    // Time for this project
+                                    if (project.totalTime.inSeconds > 0)
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: Text(
+                                          DateTimeUtils.formatDuration(
+                                            project.totalTime,
+                                          ),
+                                          style: const TextStyle(
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 11,
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                      ),
+                                    // Add task button
+                                    InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          if (isTaskEntryExpanded) {
+                                            _expandedTaskEntryProjectId = null;
+                                          } else {
+                                            _expandedTaskEntryProjectId =
+                                                project.id;
+                                          }
+                                        });
+                                      },
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          isTaskEntryExpanded
+                                              ? Icons.remove
+                                              : Icons.add,
+                                          size: 18,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                              ],
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          // Task chips and inline entry (only visible when expanded)
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
+                            child: isTaskEntryExpanded
+                                ? Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: 12,
+                                      right: 12,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        // Task chips
+                                        ...projectTasks.map(
+                                          (task) => TaskChip(
+                                            task: task,
+                                            onEdit: (newName) async {
+                                              final updatedTask = task.copyWith(
+                                                taskName: newName,
+                                              );
+                                              await ref
+                                                  .read(tasksProvider.notifier)
+                                                  .updateTask(updatedTask);
+                                            },
+                                            onDelete: () async {
+                                              await ref
+                                                  .read(tasksProvider.notifier)
+                                                  .deleteTask(task.id);
+                                            },
+                                          ),
+                                        ),
+                                        // Inline task entry
+                                        InlineTaskEntry(
+                                          projectId: project.id,
+                                          onSubmit: (taskName) async {
+                                            await ref
+                                                .read(tasksProvider.notifier)
+                                                .createTask(
+                                                  projectId: project.id,
+                                                  taskName: taskName,
+                                                );
+                                            if (mounted) {
+                                              context.showSuccessSnackBar(
+                                                'Task added',
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
                       );
                     },
                   );

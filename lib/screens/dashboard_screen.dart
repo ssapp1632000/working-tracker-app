@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 import '../core/extensions/context_extensions.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
@@ -598,11 +599,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
           ),
-          // Window control buttons (minimize, close)
-          const Positioned(
-            top: 8,
-            right: 8,
-            child: WindowControls(),
+          // Draggable header bar (full width)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 40,
+            child: Row(
+              children: [
+                // Draggable area (left side)
+                Expanded(
+                  child: GestureDetector(
+                    onPanStart: (_) => windowManager.startDragging(),
+                    child: Container(
+                      color: Colors.transparent,
+                    ),
+                  ),
+                ),
+                // Window control buttons (minimize, close)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8, right: 8),
+                  child: WindowControls(),
+                ),
+              ],
+            ),
           ),
         ],
       ),

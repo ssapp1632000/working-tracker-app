@@ -96,13 +96,11 @@ class _FloatingWidgetState
   }
 
   /// Checks if window has been moved and snaps it back to right edge
+  /// Preserves vertical position while snapping horizontally to right edge
   Future<void> _checkAndSnapToRightEdge() async {
     // IMPORTANT: Only snap in floating mode (60-280px wide window)
     // Don't snap the 380x580 dashboard window!
-    // Don't snap during hover or expansion - it interferes with animations
-    if (_isHovered || _isExpanded) {
-      return;
-    }
+    // Always allow vertical dragging, only snap horizontal position
 
     try {
       final size = await windowManager.getSize();
@@ -125,6 +123,7 @@ class _FloatingWidgetState
       final rightEdgeX = screenWidth - size.width;
 
       // If window has been moved away from right edge (more than 10px), snap it back
+      // Preserve the vertical (y) position to allow vertical dragging
       if ((position.dx - rightEdgeX).abs() > 10) {
         await windowManager.setPosition(
           Offset(rightEdgeX, position.dy),
@@ -424,31 +423,41 @@ class _FloatingWidgetState
     dynamic currentTimer,
     Duration sessionTotalTime,
   ) {
-    return MouseRegion(
-      onEnter: (_) => _onMouseEnter(),
-      onExit: (_) => _onMouseExit(),
-      child: Stack(
-        children: [
-          // The sliding content
-          AnimatedPositioned(
-            duration:
-                FloatingWidgetConstants.animationDuration,
-            curve: Curves.easeOutCubic,
-            right: -_currentSlideOffset,
-            top: 0,
-            bottom: 0,
-            width: FloatingWidgetConstants.fixedWidgetWidth,
-            child: SizedBox(
-              height: _getWidgetHeight(projects.length),
-              child: _buildMainContainer(
-                projects,
-                currentProject,
-                currentTimer,
-                sessionTotalTime,
+    return GestureDetector(
+      // Allow vertical-only dragging while keeping window stuck to right edge
+      onPanStart: (_) async {
+        if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+          return;
+        }
+        // Start dragging - we'll constrain it to vertical in onPanUpdate
+        await windowManager.startDragging();
+      },
+      child: MouseRegion(
+        onEnter: (_) => _onMouseEnter(),
+        onExit: (_) => _onMouseExit(),
+        child: Stack(
+          children: [
+            // The sliding content
+            AnimatedPositioned(
+              duration:
+                  FloatingWidgetConstants.animationDuration,
+              curve: Curves.easeOutCubic,
+              right: -_currentSlideOffset,
+              top: 0,
+              bottom: 0,
+              width: FloatingWidgetConstants.fixedWidgetWidth,
+              child: SizedBox(
+                height: _getWidgetHeight(projects.length),
+                child: _buildMainContainer(
+                  projects,
+                  currentProject,
+                  currentTimer,
+                  sessionTotalTime,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

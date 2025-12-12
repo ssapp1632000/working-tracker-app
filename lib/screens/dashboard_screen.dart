@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -30,6 +31,8 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState
     extends ConsumerState<DashboardScreen> {
   bool _isHandlingNavigation = false;
+  bool _hasCheckedOpenEntry = false;
+  bool _isLoading = false;
   String _searchQuery = '';
   String? _expandedTaskEntryProjectId;
   String? _hoveredProjectId;
@@ -41,6 +44,15 @@ class _DashboardScreenState
   void initState() {
     super.initState();
     _windowService.setDashboardWindowSize();
+  }
+
+  /// Check for open entry once projects are loaded
+  void _checkOpenEntryOnce() {
+    if (!_hasCheckedOpenEntry) {
+      _hasCheckedOpenEntry = true;
+      // Check for open entry and start 1-minute polling
+      ref.read(currentTimerProvider.notifier).checkAndSyncOpenEntry();
+    }
   }
 
   @override
@@ -434,6 +446,9 @@ class _DashboardScreenState
                       ),
                     ),
                     data: (projects) {
+                      // Check for open entry once projects are loaded
+                      _checkOpenEntryOnce();
+
                       if (projects.isEmpty) {
                         return Center(
                           child: Text(
@@ -706,37 +721,50 @@ class _DashboardScreenState
                                                         8,
                                                       ),
                                                   onTap: () async {
-                                                    if (isActive) {
-                                                      // Already active
+                                                    if (isActive || _isLoading) {
+                                                      // Already active or loading
                                                       return;
-                                                    } else if (currentTimer !=
-                                                        null) {
-                                                      // Switch project
-                                                      await ref
-                                                          .read(
-                                                            currentTimerProvider.notifier,
-                                                          )
-                                                          .switchProject(
-                                                            project,
+                                                    }
+                                                    setState(() => _isLoading = true);
+                                                    try {
+                                                      if (currentTimer != null) {
+                                                        // Switch project
+                                                        await ref
+                                                            .read(
+                                                              currentTimerProvider.notifier,
+                                                            )
+                                                            .switchProject(
+                                                              project,
+                                                            );
+                                                        if (mounted) {
+                                                          context.showSuccessSnackBar(
+                                                            'Switched to ${project.name}',
                                                           );
+                                                        }
+                                                      } else {
+                                                        // Start timer
+                                                        await ref
+                                                            .read(
+                                                              currentTimerProvider.notifier,
+                                                            )
+                                                            .startTimer(
+                                                              project,
+                                                            );
+                                                        if (mounted) {
+                                                          context.showSuccessSnackBar(
+                                                            'Timer started',
+                                                          );
+                                                        }
+                                                      }
+                                                    } catch (e) {
                                                       if (mounted) {
-                                                        context.showSuccessSnackBar(
-                                                          'Switched to ${project.name}',
+                                                        context.showErrorSnackBar(
+                                                          'Error: ${e.toString().replaceFirst("Exception: ", "")}',
                                                         );
                                                       }
-                                                    } else {
-                                                      // Start timer
-                                                      await ref
-                                                          .read(
-                                                            currentTimerProvider.notifier,
-                                                          )
-                                                          .startTimer(
-                                                            project,
-                                                          );
+                                                    } finally {
                                                       if (mounted) {
-                                                        context.showSuccessSnackBar(
-                                                          'Timer started',
-                                                        );
+                                                        setState(() => _isLoading = false);
                                                       }
                                                     }
                                                   },
@@ -792,18 +820,32 @@ class _DashboardScreenState
                                                       isActive: isTaskActive,
                                                       currentDuration: isTaskActive ? currentTaskDuration : null,
                                                       onActivate: () async {
-                                                        await ref
-                                                            .read(
-                                                              currentTimerProvider.notifier,
-                                                            )
-                                                            .startTimerWithTask(
-                                                              project,
-                                                              task.id,
+                                                        if (_isLoading) return;
+                                                        setState(() => _isLoading = true);
+                                                        try {
+                                                          await ref
+                                                              .read(
+                                                                currentTimerProvider.notifier,
+                                                              )
+                                                              .startTimerWithTask(
+                                                                project,
+                                                                task.id,
+                                                              );
+                                                          if (mounted) {
+                                                            context.showSuccessSnackBar(
+                                                              'Started: ${task.taskName}',
                                                             );
-                                                        if (mounted) {
-                                                          context.showSuccessSnackBar(
-                                                            'Started: ${task.taskName}',
-                                                          );
+                                                          }
+                                                        } catch (e) {
+                                                          if (mounted) {
+                                                            context.showErrorSnackBar(
+                                                              'Error: ${e.toString().replaceFirst("Exception: ", "")}',
+                                                            );
+                                                          }
+                                                        } finally {
+                                                          if (mounted) {
+                                                            setState(() => _isLoading = false);
+                                                          }
                                                         }
                                                       },
                                                       onEdit: (newName) async {
@@ -863,6 +905,7 @@ class _DashboardScreenState
                     },
                   ),
                 ),
+
               ],
             ),
           ),
@@ -895,6 +938,21 @@ class _DashboardScreenState
               ],
             ),
           ),
+          // Loading overlay with blur
+          if (_isLoading)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

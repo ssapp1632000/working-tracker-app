@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/validators.dart';
 import '../providers/auth_provider.dart';
+import '../services/storage_service.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/window_controls.dart';
@@ -50,6 +51,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       await ref.read(currentUserProvider.notifier).login(email, password);
+
+      if (!mounted) return;
+
+      // Clear cached projects to ensure fresh data on login
+      await StorageService().clearProjects();
 
       if (!mounted) return;
 

@@ -134,6 +134,17 @@ class StorageService {
     }
   }
 
+  // Clear all projects (for fresh login)
+  Future<void> clearProjects() async {
+    try {
+      await _projectBox.clear();
+      _logger.info('All projects cleared');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to clear projects', e, stackTrace);
+      rethrow;
+    }
+  }
+
   // Time entry operations
   Future<void> saveTimeEntry(TimeEntry entry) async {
     try {

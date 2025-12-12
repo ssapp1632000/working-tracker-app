@@ -220,6 +220,248 @@ class ApiService {
     }
   }
 
+  /// Start time tracking for a project
+  /// POST /projects/time-entries/start-time/{projectId}
+  Future<bool> startTime(String projectId) async {
+    try {
+      _logger.info('Starting time for project: $projectId');
+
+      final uri = Uri.parse('$baseUrl/projects/time-entries/start-time/$projectId');
+      final response = await http.post(uri, headers: _headers);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _logger.info('Time started successfully for project: $projectId');
+        return true;
+      } else {
+        _logger.warning('Failed to start time: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error starting time', e, stackTrace);
+      return false;
+    }
+  }
+
+  /// End time tracking for a project
+  /// Tries multiple endpoint formats
+  Future<bool> endTime(String projectId) async {
+    try {
+      _logger.info('Ending time for project: $projectId');
+
+      // Try POST to /end-time (without projectId - ends current open entry)
+      var uri = Uri.parse('$baseUrl/projects/time-entries/end-time');
+      var response = await http.post(uri, headers: _headers);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _logger.info('Time ended successfully (POST /end-time)');
+        return true;
+      }
+
+      // Check if "no open entry" - this is OK, nothing to end
+      if (_isNoOpenEntryResponse(response)) {
+        _logger.info('No open entry to end - proceeding');
+        return true;
+      }
+
+      // Try PUT to /end-time/{projectId}
+      uri = Uri.parse('$baseUrl/projects/time-entries/end-time/$projectId');
+      response = await http.put(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        _logger.info('Time ended successfully (PUT /end-time/{projectId})');
+        return true;
+      }
+
+      // Check if "no open entry" - this is OK, nothing to end
+      if (_isNoOpenEntryResponse(response)) {
+        _logger.info('No open entry to end - proceeding');
+        return true;
+      }
+
+      // Try POST to /end-time/{projectId}
+      response = await http.post(uri, headers: _headers);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _logger.info('Time ended successfully (POST /end-time/{projectId})');
+        return true;
+      }
+
+      // Check if "no open entry" - this is OK, nothing to end
+      if (_isNoOpenEntryResponse(response)) {
+        _logger.info('No open entry to end - proceeding');
+        return true;
+      }
+
+      _logger.warning('Failed to end time: ${response.statusCode} - ${response.body}');
+      return false;
+    } catch (e, stackTrace) {
+      _logger.error('Error ending time', e, stackTrace);
+      return false;
+    }
+  }
+
+  /// Helper: Check if response indicates no open entry (which is OK)
+  bool _isNoOpenEntryResponse(http.Response response) {
+    if (response.statusCode == 404) {
+      try {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final message = data['message']?.toString().toLowerCase() ?? '';
+        if (message.contains('no open') || message.contains('not found')) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// Add current user to a project
+  /// POST /projects/addMyself/{projectId}
+  Future<bool> addMyselfToProject(String projectId) async {
+    try {
+      _logger.info('Adding myself to project: $projectId');
+
+      final uri = Uri.parse('$baseUrl/projects/addMyself/$projectId');
+      final response = await http.post(uri, headers: _headers);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _logger.info('Added to project successfully: $projectId');
+        return true;
+      } else if (response.statusCode == 400) {
+        // Check if already a member - this is not an error
+        try {
+          final data = json.decode(response.body) as Map<String, dynamic>;
+          if (data['message']?.toString().toLowerCase().contains('already') == true) {
+            _logger.info('Already a member of project: $projectId');
+            return true;
+          }
+        } catch (_) {}
+        _logger.warning('Failed to add to project: ${response.statusCode} - ${response.body}');
+        return false;
+      } else {
+        _logger.warning('Failed to add to project: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error adding to project', e, stackTrace);
+      return false;
+    }
+  }
+
+  /// Check if user has worked on a project before
+  /// GET /projects/time-entries/history?projectId={projectId}
+  /// Returns true if user has time entries for this project
+  Future<bool> hasWorkedOnProject(String projectId) async {
+    try {
+      _logger.info('Checking if worked on project: $projectId');
+
+      final uri = Uri.parse('$baseUrl/projects/time-entries/history').replace(
+        queryParameters: {'projectId': projectId, 'limit': '1'},
+      );
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        // Check if there are any entries
+        if (data['entries'] != null && data['entries'] is List) {
+          final hasEntries = (data['entries'] as List).isNotEmpty;
+          _logger.info('Has worked on project $projectId: $hasEntries');
+          return hasEntries;
+        }
+        return false;
+      } else {
+        _logger.warning('Failed to check project history: ${response.statusCode}');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error checking project history', e, stackTrace);
+      return false;
+    }
+  }
+
+  /// Get time entry history for a project
+  /// GET /projects/time-entries/history?projectId={projectId}
+  Future<List<Map<String, dynamic>>> getProjectHistory(String projectId) async {
+    try {
+      _logger.info('Getting history for project: $projectId');
+
+      final uri = Uri.parse('$baseUrl/projects/time-entries/history').replace(
+        queryParameters: {'projectId': projectId},
+      );
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        if (data['entries'] != null && data['entries'] is List) {
+          return (data['entries'] as List)
+              .map((e) => e as Map<String, dynamic>)
+              .toList();
+        }
+        return [];
+      } else {
+        _logger.warning('Failed to get project history: ${response.statusCode}');
+        return [];
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error getting project history', e, stackTrace);
+      return [];
+    }
+  }
+
+  /// Fetch open time entry (currently active project)
+  /// Returns the project ID if there's an open entry, null otherwise
+  Future<Map<String, dynamic>?> getOpenEntry() async {
+    try {
+      _logger.info('Checking for open time entry...');
+
+      final uri = Uri.parse('$baseUrl/projects/time-entries/open-entry');
+      final response = await http.get(uri, headers: _headers);
+
+      _logger.info('Open entry response status: ${response.statusCode}');
+      _logger.info('Open entry response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        // Try multiple possible response formats
+        // Format 1: { success: true, entry: {...} }
+        if (data['success'] == true && data['entry'] != null) {
+          _logger.info('Found open entry (format 1): ${data['entry']}');
+          return data['entry'] as Map<String, dynamic>;
+        }
+        // Format 2: { entry: {...} } without success field
+        if (data.containsKey('entry') && data['entry'] != null) {
+          _logger.info('Found open entry (format 2): ${data['entry']}');
+          return data['entry'] as Map<String, dynamic>;
+        }
+        // Format 3: Direct entry object { _id: ..., project: ..., startTime: ... }
+        if (data.containsKey('project') || data.containsKey('_id')) {
+          _logger.info('Found open entry (format 3 - direct): $data');
+          return data;
+        }
+        // Format 4: { data: {...} }
+        if (data.containsKey('data') && data['data'] != null) {
+          _logger.info('Found open entry (format 4): ${data['data']}');
+          return data['data'] as Map<String, dynamic>;
+        }
+
+        _logger.info('No open entry found in response: $data');
+        return null;
+      } else if (response.statusCode == 404) {
+        _logger.info('No open entry found (404)');
+        return null;
+      } else if (response.statusCode == 401) {
+        _logger.error('Unauthorized - user may need to re-login', null, null);
+        throw Exception('Unauthorized - please login again');
+      } else {
+        _logger.warning('Failed to fetch open entry: ${response.statusCode}');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching open entry', e, stackTrace);
+      return null; // Don't rethrow - just return null on error
+    }
+  }
+
   /// Fetch only settings from the API
   Future<Map<String, dynamic>> getSettings() async {
     try {

@@ -45,14 +45,14 @@ class ProjectService {
           return existingProjects.map((p) => _enrichProjectWithLocalTime(p)).toList();
         }
 
-        // If no storage, create mock projects
+        // If no storage, create mock projects (don't save to avoid stale data)
         final mockProjects = _createMockProjects();
-        await _storage.saveProjects(mockProjects);
-        _logger.info('Created ${mockProjects.length} mock projects');
+        _logger.info('Created ${mockProjects.length} mock projects (not persisted)');
         return mockProjects;
       }
 
-      // Save projects to storage for offline access
+      // Clear old cache and save fresh projects for offline access
+      await _storage.clearProjects();
       await _storage.saveProjects(projects);
       _logger.info('Loaded ${projects.length} projects from API');
 
@@ -68,9 +68,9 @@ class ProjectService {
         return existingProjects.map((p) => _enrichProjectWithLocalTime(p)).toList();
       }
 
-      // Last resort: mock data
+      // Last resort: mock data (don't save to avoid stale data)
       final mockProjects = _createMockProjects();
-      await _storage.saveProjects(mockProjects);
+      _logger.info('Using mock projects (not persisted)');
       return mockProjects;
     }
   }

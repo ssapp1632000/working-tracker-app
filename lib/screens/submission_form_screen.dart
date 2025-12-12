@@ -13,6 +13,7 @@ import '../models/task_submission.dart';
 import '../providers/auth_provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/timer_provider.dart';
+import '../services/api_service.dart';
 import '../services/report_submission_service.dart';
 import '../services/window_service.dart';
 import '../widgets/gradient_button.dart';
@@ -365,6 +366,12 @@ class _SubmissionFormScreenState
     try {
       // Save current running task's duration before submission
       await ref.read(currentTimerProvider.notifier).saveCurrentTaskDuration();
+
+      // End time tracking on server for all projects being submitted
+      final api = ApiService();
+      for (var project in widget.projects.where((p) => p.totalTime.inSeconds > 0)) {
+        await api.endTime(project.id);
+      }
 
       // Update form data with latest task durations from provider
       for (var project in widget.projects.where((p) => p.totalTime.inSeconds > 0)) {

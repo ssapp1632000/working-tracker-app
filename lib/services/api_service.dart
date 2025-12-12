@@ -487,4 +487,56 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// Fetch daily reports (paginated) with optional date filtering
+  /// GET /reports/daily-reports
+  Future<Map<String, dynamic>> getDailyReports({
+    int page = 1,
+    int limit = 20,
+    DateTime? from,
+    DateTime? to,
+    String? projectId,
+  }) async {
+    try {
+      _logger.info('Fetching daily reports (page: $page, limit: $limit)...');
+
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+      };
+      if (from != null) queryParams['from'] = from.toIso8601String();
+      if (to != null) queryParams['to'] = to.toIso8601String();
+      if (projectId != null) queryParams['projectId'] = projectId;
+
+      final uri = Uri.parse('$baseUrl/reports/daily-reports').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        if (data['success'] == true) {
+          _logger.info('Successfully fetched daily reports');
+          return {
+            'reports': data['reports'] ?? [],
+            'meta': data['meta'] ?? {},
+          };
+        } else {
+          _logger.warning('API returned success: false');
+          return {'reports': [], 'meta': {}};
+        }
+      } else if (response.statusCode == 401) {
+        _logger.error('Unauthorized - user may need to re-login', null, null);
+        throw Exception('Unauthorized - please login again');
+      } else {
+        _logger.error('Failed to fetch daily reports: ${response.statusCode}', null, null);
+        throw Exception('Failed to fetch reports: ${response.statusCode}');
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching daily reports', e, stackTrace);
+      rethrow;
+    }
+  }
 }

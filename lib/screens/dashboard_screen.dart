@@ -19,6 +19,7 @@ import '../widgets/inline_task_entry.dart';
 import '../widgets/task_chip.dart';
 import 'login_screen.dart';
 import 'submission_form_screen.dart';
+import 'daily_reports_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -243,6 +244,26 @@ class _DashboardScreenState
                     // Action buttons
                     Row(
                       children: [
+                        // My Reports button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.description_outlined,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const DailyReportsScreen(),
+                              ),
+                            );
+                          },
+                          tooltip: 'My Reports',
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 12),
                         // Floating mode button
                         IconButton(
                           icon: const Icon(

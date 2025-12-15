@@ -612,6 +612,57 @@ class ApiService {
     }
   }
 
+  /// Get daily report by date
+  /// GET /reports/daily-reports/by-date?date=YYYY-MM-DD
+  Future<Map<String, dynamic>?> getDailyReportByDate(DateTime date) async {
+    try {
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      _logger.info('Fetching daily report for date: $dateStr');
+
+      final uri = Uri.parse('$baseUrl/reports/daily-reports/by-date').replace(
+        queryParameters: {'date': dateStr},
+      );
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        _logger.info('Daily report response: $data');
+
+        if (data['success'] == true) {
+          // API returns report directly or in data.report
+          if (data['report'] != null) {
+            _logger.info('Found daily report for $dateStr with keys: ${(data['report'] as Map).keys}');
+            return data['report'] as Map<String, dynamic>;
+          } else if (data['data'] != null) {
+            final dataField = data['data'] as Map<String, dynamic>;
+            if (dataField['report'] != null) {
+              _logger.info('Found daily report for $dateStr (in data.report)');
+              return dataField['report'] as Map<String, dynamic>;
+            }
+            // Maybe data itself contains tasks directly
+            if (dataField['tasks'] != null) {
+              _logger.info('Found tasks directly in data field');
+              return dataField;
+            }
+          }
+          _logger.info('No daily report for $dateStr');
+          return null;
+        }
+        return null;
+      } else if (response.statusCode == 401) {
+        _logger.error('Unauthorized - user may need to re-login', null, null);
+        throw Exception('Unauthorized - please login again');
+      } else {
+        _logger.warning('Failed to fetch daily report by date: ${response.statusCode}');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching daily report by date', e, stackTrace);
+      return null;
+    }
+  }
+
   // ============================================================================
   // ATTENDANCE APIs
   // ============================================================================
@@ -689,6 +740,7 @@ class ApiService {
 
   /// Create a daily report (submit task)
   /// POST /reports/daily-reports (multipart/form-data)
+  /// API expects: tasks[] array with { projectId, title, description }
   Future<Map<String, dynamic>?> createDailyReport({
     required String projectId,
     required String taskName,
@@ -709,14 +761,17 @@ class ApiService {
         request.headers['Authorization'] = 'Bearer ${user!.token}';
       }
 
-      // Add form fields
-      request.fields['projectId'] = projectId;
-      request.fields['taskName'] = taskName;
-      request.fields['taskDescription'] = taskDescription;
+      // API expects tasks as an array: tasks[0][projectId], tasks[0][title], tasks[0][description]
+      request.fields['tasks[0][projectId]'] = projectId;
+      request.fields['tasks[0][title]'] = taskName;
+      request.fields['tasks[0][description]'] = taskDescription;
 
-      // Add attachments if any
+      _logger.info('Sending task: projectId=$projectId, title=$taskName, description=$taskDescription');
+
+      // Add attachments if any - use tasks[0][attachments] format
       if (attachments != null && attachments.isNotEmpty) {
-        for (final file in attachments) {
+        for (int i = 0; i < attachments.length; i++) {
+          final file = attachments[i];
           final filename = file.path.split('/').last;
           final extension = filename.split('.').last.toLowerCase();
 
@@ -739,7 +794,7 @@ class ApiService {
 
           request.files.add(
             await http.MultipartFile.fromPath(
-              'taskAttachments',
+              'tasks[0][attachments]',
               file.path,
               filename: filename,
               contentType: MediaType.parse(mimeType),

@@ -175,6 +175,10 @@ class _TaskFormWidgetState extends State<TaskFormWidget> {
             decoration: InputDecoration(
               labelText: 'Task Name *',
               hintText: 'What did you work on?',
+              hintStyle: TextStyle(
+                color: Colors.grey[500],
+                fontSize: widget.compact ? 13 : 14,
+              ),
               isDense: widget.compact,
               contentPadding: widget.compact
                   ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
@@ -196,6 +200,10 @@ class _TaskFormWidgetState extends State<TaskFormWidget> {
             decoration: InputDecoration(
               labelText: 'Description *',
               hintText: 'Describe what you accomplished...',
+              hintStyle: TextStyle(
+                color: Colors.grey[500],
+                fontSize: widget.compact ? 13 : 14,
+              ),
               alignLabelWithHint: true,
               isDense: widget.compact,
               contentPadding: widget.compact

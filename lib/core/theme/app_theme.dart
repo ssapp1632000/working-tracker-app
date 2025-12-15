@@ -87,6 +87,18 @@ class AppTheme {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: surfaceColor,
+      hintStyle: TextStyle(
+        color: Colors.grey[400],
+        fontSize: 14,
+      ),
+      labelStyle: TextStyle(
+        color: Colors.grey[600],
+        fontSize: 14,
+      ),
+      floatingLabelStyle: const TextStyle(
+        color: primaryColor,
+        fontSize: 14,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(color: borderColor),

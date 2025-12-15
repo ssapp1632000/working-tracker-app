@@ -109,19 +109,54 @@ class _ProjectTaskCardState extends State<ProjectTaskCard>
                   ),
                   const SizedBox(width: 8),
 
-                  // Project Icon
+                  // Project Avatar - show image if available, otherwise first letter
                   Container(
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      gradient: AppTheme.primaryGradient,
+                      gradient: widget.project.imageUrl == null
+                          ? AppTheme.primaryGradient
+                          : null,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.folder_outlined,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: widget.project.imageUrl != null
+                        ? Image.network(
+                            widget.project.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              // Fallback to first letter on error
+                              return Container(
+                                decoration: const BoxDecoration(
+                                  gradient: AppTheme.primaryGradient,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    widget.project.projectName.isNotEmpty
+                                        ? widget.project.projectName[0].toUpperCase()
+                                        : 'P',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                        : Center(
+                            child: Text(
+                              widget.project.projectName.isNotEmpty
+                                  ? widget.project.projectName[0].toUpperCase()
+                                  : 'P',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 12),
 

@@ -117,6 +117,7 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
         final projectId = _extractProjectId(entry);
         final projectName = _extractProjectName(entry);
         final duration = _extractDuration(entry);
+        final imageUrl = _extractProjectImage(entry);
 
         if (projectId.isNotEmpty) {
           if (projectMap.containsKey(projectId)) {
@@ -124,6 +125,8 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
             final existing = projectMap[projectId]!;
             projectMap[projectId] = existing.copyWith(
               totalTimeWorked: existing.totalTimeWorked + duration,
+              // Update image if we have one and existing doesn't
+              imageUrl: existing.imageUrl ?? imageUrl,
             );
           } else {
             // Create new project entry
@@ -131,6 +134,7 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
               projectId: projectId,
               projectName: projectName,
               totalTimeWorked: duration,
+              imageUrl: imageUrl,
             );
           }
         }
@@ -152,13 +156,86 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
           );
         } else {
           // Create new entry for active project
+          // Try to get project image from API
+          String? projectImage;
+          try {
+            final projects = await _api.getProjects();
+            final project = projects.firstWhere(
+              (p) => p['_id']?.toString() == currentTimer.projectId,
+              orElse: () => <String, dynamic>{},
+            );
+            projectImage = project['projectImage']?.toString();
+          } catch (e) {
+            _logger.warning('Could not fetch project image: $e');
+          }
+
           projectMap[currentTimer.projectId] = ProjectWithTime(
             projectId: currentTimer.projectId,
             projectName: currentTimer.projectName,
             totalTimeWorked: totalTime,
+            imageUrl: projectImage,
           );
         }
         _logger.info('Added active timer project: ${currentTimer.projectName} with ${totalTime.inMinutes} minutes');
+      }
+
+      // Fetch today's daily report to get already submitted tasks
+      try {
+        final todayReport = await _api.getDailyReportByDate(DateTime.now());
+        _logger.info('Today report response: $todayReport');
+
+        if (todayReport != null) {
+          // Tasks might be in 'tasks' field directly
+          List? tasks;
+          if (todayReport['tasks'] != null) {
+            tasks = todayReport['tasks'] as List;
+          }
+
+          if (tasks != null && tasks.isNotEmpty) {
+            _logger.info('Found ${tasks.length} already submitted tasks today');
+            _logger.info('Project map keys: ${projectMap.keys.toList()}');
+
+            // Group tasks by projectId and add to projectMap
+            for (final task in tasks) {
+              _logger.info('Processing task: $task');
+              final taskProjectId = _extractTaskProjectId(task);
+              _logger.info('Task project ID: $taskProjectId, exists in map: ${projectMap.containsKey(taskProjectId)}');
+
+              if (taskProjectId.isNotEmpty && projectMap.containsKey(taskProjectId)) {
+                final existing = projectMap[taskProjectId]!;
+                final submittedTask = SubmittedTaskInfo(
+                  taskName: task['title']?.toString() ?? 'Untitled Task',
+                  description: task['description']?.toString() ?? '',
+                  submittedAt: DateTime.tryParse(task['createdAt']?.toString() ?? '') ?? DateTime.now(),
+                );
+                projectMap[taskProjectId] = existing.addTask(submittedTask);
+                _logger.info('Added task "${submittedTask.taskName}" to project $taskProjectId');
+              } else if (taskProjectId.isNotEmpty) {
+                // Task exists but project not in time entries - still show it
+                _logger.info('Task project $taskProjectId not in time entries, creating entry');
+                final projectName = _extractTaskProjectName(task);
+                final submittedTask = SubmittedTaskInfo(
+                  taskName: task['title']?.toString() ?? 'Untitled Task',
+                  description: task['description']?.toString() ?? '',
+                  submittedAt: DateTime.tryParse(task['createdAt']?.toString() ?? '') ?? DateTime.now(),
+                );
+                projectMap[taskProjectId] = ProjectWithTime(
+                  projectId: taskProjectId,
+                  projectName: projectName,
+                  totalTimeWorked: Duration.zero,
+                ).addTask(submittedTask);
+              }
+            }
+          } else {
+            _logger.info('No tasks found in today report');
+          }
+        } else {
+          _logger.info('No daily report for today');
+        }
+      } catch (e, stackTrace) {
+        _logger.warning('Could not fetch today\'s daily report: $e');
+        _logger.warning('Stack trace: $stackTrace');
+        // Continue without pre-populating tasks
       }
 
       setState(() {
@@ -195,12 +272,47 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
     return entry['projectId']?.toString() ?? '';
   }
 
+  String _extractTaskProjectId(Map<String, dynamic> task) {
+    // Task has project field which can be an object or string
+    final project = task['project'];
+    if (project is Map) {
+      return project['_id']?.toString() ?? project['id']?.toString() ?? '';
+    }
+    if (project is String) {
+      return project;
+    }
+    return task['projectId']?.toString() ?? '';
+  }
+
+  String _extractTaskProjectName(Map<String, dynamic> task) {
+    // Task has project field which can be an object with name
+    final project = task['project'];
+    if (project is Map) {
+      return project['name']?.toString() ?? 'Unknown Project';
+    }
+    return task['projectName']?.toString() ?? 'Unknown Project';
+  }
+
   String _extractProjectName(Map<String, dynamic> entry) {
     final project = entry['project'];
     if (project is Map) {
       return project['name']?.toString() ?? 'Unknown Project';
     }
     return entry['projectName']?.toString() ?? 'Unknown Project';
+  }
+
+  String? _extractProjectImage(Map<String, dynamic> entry) {
+    final project = entry['project'];
+    if (project is Map) {
+      // Try different possible field names for project image
+      return project['projectImage']?.toString() ??
+          project['image']?.toString() ??
+          project['imageUrl']?.toString() ??
+          project['logo']?.toString() ??
+          project['avatar']?.toString() ??
+          project['picture']?.toString();
+    }
+    return null;
   }
 
   Duration _extractDuration(Map<String, dynamic> entry) {
@@ -248,9 +360,13 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Container(
-        width: 480,
-        constraints: const BoxConstraints(maxHeight: 700),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minWidth: 560,
+          maxWidth: 560,
+          maxHeight: 700,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -438,7 +554,7 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
           ...List.generate(_projects.length, (index) {
             return ProjectTaskCard(
               project: _projects[index],
-              initiallyExpanded: _projects.length == 1 || !_projects[index].hasTask,
+              initiallyExpanded: !_projects[index].hasTask, // Only expand if no tasks submitted
               onTaskSubmitted: (task) => _onTaskSubmitted(index, task),
             );
           }),
@@ -465,50 +581,11 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
             child: const Text('Cancel'),
           ),
 
-          // Flexible spacer to push items to the right
-          const Expanded(child: SizedBox()),
-
-          // Status indicator
-          if (!_isLoading && _projects.isNotEmpty) ...[
-            Flexible(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _canProceed
-                      ? AppTheme.successColor.withValues(alpha: 0.1)
-                      : AppTheme.warningColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _canProceed ? Icons.check_circle : Icons.pending,
-                      size: 14,
-                      color: _canProceed ? AppTheme.successColor : AppTheme.warningColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        '$_totalTasksSubmitted task${_totalTasksSubmitted != 1 ? 's' : ''}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _canProceed ? AppTheme.successColor : AppTheme.warningColor,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
+          const Spacer(),
 
           // Done button
           SizedBox(
-            width: 90,
+            width: 100,
             child: GradientButton(
               onPressed: _canProceed ? _onDone : null,
               height: 40,

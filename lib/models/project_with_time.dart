@@ -4,12 +4,14 @@ class ProjectWithTime {
   final String projectId;
   final String projectName;
   final Duration totalTimeWorked;
+  final String? imageUrl;
   final List<SubmittedTaskInfo> submittedTasks;
 
   ProjectWithTime({
     required this.projectId,
     required this.projectName,
     required this.totalTimeWorked,
+    this.imageUrl,
     List<SubmittedTaskInfo>? submittedTasks,
   }) : submittedTasks = submittedTasks ?? [];
 
@@ -24,12 +26,14 @@ class ProjectWithTime {
     String? projectId,
     String? projectName,
     Duration? totalTimeWorked,
+    String? imageUrl,
     List<SubmittedTaskInfo>? submittedTasks,
   }) {
     return ProjectWithTime(
       projectId: projectId ?? this.projectId,
       projectName: projectName ?? this.projectName,
       totalTimeWorked: totalTimeWorked ?? this.totalTimeWorked,
+      imageUrl: imageUrl ?? this.imageUrl,
       submittedTasks: submittedTasks ?? this.submittedTasks,
     );
   }

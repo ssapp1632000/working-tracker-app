@@ -291,6 +291,9 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       // - Clearing everything if no open entry
       await checkAndSyncOpenEntry();
 
+      // Also sync tasks from API for today
+      await _ref.read(tasksProvider.notifier).syncTasksFromApi(DateTime.now());
+
       _logger.info('State re-synced after socket event');
     } catch (e, stackTrace) {
       _logger.error('Failed to handle socket event', e, stackTrace);

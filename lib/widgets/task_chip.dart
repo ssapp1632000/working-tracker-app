@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
-import '../core/utils/date_time_utils.dart';
 import '../models/task.dart';
 
 class TaskChip extends StatefulWidget {
@@ -78,13 +77,6 @@ class _TaskChipState extends State<TaskChip> {
     setState(() {
       _isEditing = false;
     });
-  }
-
-  // Calculate the total duration to display (saved + current if active)
-  Duration get _displayDuration {
-    final saved = widget.task.totalDuration;
-    final current = widget.currentDuration ?? Duration.zero;
-    return saved + current;
   }
 
   @override
@@ -251,23 +243,6 @@ class _TaskChipState extends State<TaskChip> {
                                 : FontWeight.normal,
                           ),
                           overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Timer display - always show for all tasks
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Text(
-                          DateTimeUtils.formatDuration(_displayDuration),
-                          style: TextStyle(
-                            fontSize: widget.isCompact ? 10.0 : 11.0,
-                            color: widget.isActive
-                                ? AppTheme.successColor
-                                : AppTheme.textSecondary,
-                            fontWeight: widget.isActive
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                            fontFamily: 'monospace',
-                          ),
                         ),
                       ),
                       // Edit button (hide when active to save space)

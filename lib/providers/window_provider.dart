@@ -36,6 +36,9 @@ class WindowModeNotifier extends StateNotifier<bool> {
       state = true;
       _logger.info('Window mode: Floating (UI updated)');
 
+      // Small delay to let UI update before window resize starts
+      await Future.delayed(const Duration(milliseconds: 50));
+
       // Then configure window to resize
       await _windowService.switchToFloatingMode();
 

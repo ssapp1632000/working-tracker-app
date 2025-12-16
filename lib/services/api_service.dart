@@ -740,7 +740,7 @@ class ApiService {
 
   /// Create a daily report (submit task)
   /// POST /reports/daily-reports (multipart/form-data)
-  /// API expects: tasks[] array with { projectId, title, description }
+  /// API expects: tasks as JSON string + taskAttachments_0 for files
   Future<Map<String, dynamic>?> createDailyReport({
     required String projectId,
     required String taskName,
@@ -761,47 +761,37 @@ class ApiService {
         request.headers['Authorization'] = 'Bearer ${user!.token}';
       }
 
-      // API expects tasks as an array: tasks[0][projectId], tasks[0][title], tasks[0][description]
-      request.fields['tasks[0][projectId]'] = projectId;
-      request.fields['tasks[0][title]'] = taskName;
-      request.fields['tasks[0][description]'] = taskDescription;
+      // Build tasks JSON array (single task at index 0)
+      final tasksJson = [
+        {
+          'projectId': projectId,
+          'title': taskName,
+          'description': taskDescription,
+          'meta': {},
+        }
+      ];
+
+      // Add tasks as JSON string
+      request.fields['tasks'] = json.encode(tasksJson);
 
       _logger.info('Sending task: projectId=$projectId, title=$taskName, description=$taskDescription');
 
-      // Add attachments if any - use tasks[0][attachments] format
+      // Add attachments if any - use taskAttachments_0 format (0 = task index)
       if (attachments != null && attachments.isNotEmpty) {
-        for (int i = 0; i < attachments.length; i++) {
-          final file = attachments[i];
-          final filename = file.path.split('/').last;
-          final extension = filename.split('.').last.toLowerCase();
-
-          // Determine MIME type
-          String mimeType;
-          switch (extension) {
-            case 'jpg':
-            case 'jpeg':
-              mimeType = 'image/jpeg';
-              break;
-            case 'png':
-              mimeType = 'image/png';
-              break;
-            case 'pdf':
-              mimeType = 'application/pdf';
-              break;
-            default:
-              mimeType = 'application/octet-stream';
+        for (final file in attachments) {
+          if (await file.exists()) {
+            final filename = file.path.split('/').last;
+            request.files.add(
+              await http.MultipartFile.fromPath(
+                'taskAttachments_0',
+                file.path,
+                filename: filename,
+              ),
+            );
+            _logger.info('Added attachment: $filename');
           }
-
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'tasks[0][attachments]',
-              file.path,
-              filename: filename,
-              contentType: MediaType.parse(mimeType),
-            ),
-          );
         }
-        _logger.info('Added ${attachments.length} attachments');
+        _logger.info('Added ${attachments.length} attachments total');
       }
 
       // Send request

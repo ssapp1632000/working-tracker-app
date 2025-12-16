@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import '../models/project_with_time.dart';
 import '../providers/timer_provider.dart';
+import '../providers/attendance_provider.dart';
+import '../providers/task_provider.dart';
 import '../services/api_service.dart';
 import '../services/logger_service.dart';
 import 'project_task_card.dart';
@@ -108,7 +110,25 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
         _error = null;
       });
 
-      final entries = await _api.getTodayTimeEntries();
+      // Fetch time entries and projects list in parallel
+      final results = await Future.wait([
+        _api.getTodayTimeEntries(),
+        _api.getProjects(),
+      ]);
+
+      final entries = results[0];
+      final allProjects = results[1];
+
+      // Build a map of project images from the projects API
+      final projectImages = <String, String>{};
+      for (final project in allProjects) {
+        final projectId = project['_id']?.toString() ?? '';
+        final imageUrl = project['projectImage']?.toString();
+        if (projectId.isNotEmpty && imageUrl != null && imageUrl.isNotEmpty) {
+          projectImages[projectId] = imageUrl;
+        }
+      }
+      _logger.info('Loaded ${projectImages.length} project images from API');
 
       // Group entries by projectId
       final projectMap = <String, ProjectWithTime>{};
@@ -117,7 +137,8 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
         final projectId = _extractProjectId(entry);
         final projectName = _extractProjectName(entry);
         final duration = _extractDuration(entry);
-        final imageUrl = _extractProjectImage(entry);
+        // Try to get image from time entry first, then from projects API
+        final imageUrl = _extractProjectImage(entry) ?? projectImages[projectId];
 
         if (projectId.isNotEmpty) {
           if (projectMap.containsKey(projectId)) {
@@ -155,67 +176,64 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
             totalTimeWorked: existing.totalTimeWorked + currentTimer.elapsedDuration,
           );
         } else {
-          // Create new entry for active project
-          // Try to get project image from API
-          String? projectImage;
-          try {
-            final projects = await _api.getProjects();
-            final project = projects.firstWhere(
-              (p) => p['_id']?.toString() == currentTimer.projectId,
-              orElse: () => <String, dynamic>{},
-            );
-            projectImage = project['projectImage']?.toString();
-          } catch (e) {
-            _logger.warning('Could not fetch project image: $e');
-          }
-
+          // Create new entry for active project with image from projects API
           projectMap[currentTimer.projectId] = ProjectWithTime(
             projectId: currentTimer.projectId,
             projectName: currentTimer.projectName,
             totalTimeWorked: totalTime,
-            imageUrl: projectImage,
+            imageUrl: projectImages[currentTimer.projectId],
           );
         }
         _logger.info('Added active timer project: ${currentTimer.projectName} with ${totalTime.inMinutes} minutes');
       }
 
-      // Fetch today's daily report to get already submitted tasks
-      try {
-        final todayReport = await _api.getDailyReportByDate(DateTime.now());
-        _logger.info('Today report response: $todayReport');
+      // Track API-submitted task names to avoid showing them as pending
+      final apiSubmittedTaskKeys = <String>{};
 
-        if (todayReport != null) {
+      // Fetch daily report for the attendance day (not necessarily today)
+      // This handles cases where user checked in on a previous day
+      try {
+        // Get the attendance day from provider
+        final attendance = ref.read(currentAttendanceProvider);
+        final reportDate = attendance?.day ?? DateTime.now();
+        _logger.info('Fetching daily report for attendance day: $reportDate');
+
+        final dailyReport = await _api.getDailyReportByDate(reportDate);
+        _logger.info('Daily report response for $reportDate: $dailyReport');
+
+        if (dailyReport != null) {
           // Tasks might be in 'tasks' field directly
           List? tasks;
-          if (todayReport['tasks'] != null) {
-            tasks = todayReport['tasks'] as List;
+          if (dailyReport['tasks'] != null) {
+            tasks = dailyReport['tasks'] as List;
           }
 
           if (tasks != null && tasks.isNotEmpty) {
-            _logger.info('Found ${tasks.length} already submitted tasks today');
-            _logger.info('Project map keys: ${projectMap.keys.toList()}');
+            _logger.info('Found ${tasks.length} already submitted tasks for attendance day');
 
-            // Group tasks by projectId and add to projectMap
+            // Group tasks by projectId and add to projectMap as submitted
             for (final task in tasks) {
-              _logger.info('Processing task: $task');
               final taskProjectId = _extractTaskProjectId(task);
-              _logger.info('Task project ID: $taskProjectId, exists in map: ${projectMap.containsKey(taskProjectId)}');
+              final taskName = task['title']?.toString() ?? 'Untitled Task';
+
+              // Track this task as already submitted to API
+              final taskKey = '$taskProjectId:$taskName';
+              apiSubmittedTaskKeys.add(taskKey);
 
               if (taskProjectId.isNotEmpty && projectMap.containsKey(taskProjectId)) {
                 final existing = projectMap[taskProjectId]!;
                 final submittedTask = SubmittedTaskInfo(
-                  taskName: task['title']?.toString() ?? 'Untitled Task',
+                  taskName: taskName,
                   description: task['description']?.toString() ?? '',
                   submittedAt: DateTime.tryParse(task['createdAt']?.toString() ?? '') ?? DateTime.now(),
                 );
                 projectMap[taskProjectId] = existing.addTask(submittedTask);
-                _logger.info('Added task "${submittedTask.taskName}" to project $taskProjectId');
+                _logger.info('Added API task "$taskName" to project $taskProjectId');
               } else if (taskProjectId.isNotEmpty) {
                 // Task exists but project not in time entries - still show it
-                _logger.info('Task project $taskProjectId not in time entries, creating entry');
                 final projectName = _extractTaskProjectName(task);
                 final submittedTask = SubmittedTaskInfo(
-                  taskName: task['title']?.toString() ?? 'Untitled Task',
+                  taskName: taskName,
                   description: task['description']?.toString() ?? '',
                   submittedAt: DateTime.tryParse(task['createdAt']?.toString() ?? '') ?? DateTime.now(),
                 );
@@ -227,15 +245,61 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
               }
             }
           } else {
-            _logger.info('No tasks found in today report');
+            _logger.info('No tasks found in daily report for attendance day');
           }
         } else {
-          _logger.info('No daily report for today');
+          _logger.info('No daily report for attendance day: $reportDate');
         }
       } catch (e, stackTrace) {
-        _logger.warning('Could not fetch today\'s daily report: $e');
+        _logger.warning('Could not fetch daily report for attendance day: $e');
         _logger.warning('Stack trace: $stackTrace');
         // Continue without pre-populating tasks
+      }
+
+      // Load local tasks from storage and add as pending tasks
+      // ONLY add tasks that are NOT already submitted to the API
+      final localTasks = ref.read(tasksProvider).valueOrNull ?? [];
+      _logger.info('Found ${localTasks.length} local tasks, checking against ${apiSubmittedTaskKeys.length} API-submitted tasks');
+
+      for (final localTask in localTasks) {
+        final projectId = localTask.projectId;
+        final taskKey = '$projectId:${localTask.taskName}';
+
+        // Skip if this task was already submitted to API
+        if (apiSubmittedTaskKeys.contains(taskKey)) {
+          _logger.info('Skipping local task "${localTask.taskName}" - already submitted to API');
+          // Also delete it from local storage since it's already submitted
+          try {
+            await ref.read(tasksProvider.notifier).deleteTask(localTask.id);
+            _logger.info('Cleaned up local task "${localTask.taskName}" that was already submitted');
+          } catch (e) {
+            _logger.warning('Could not clean up local task: $e');
+          }
+          continue;
+        }
+
+        if (projectMap.containsKey(projectId)) {
+          // Add as pending local task (needs description/attachments before submission)
+          final existing = projectMap[projectId]!;
+          projectMap[projectId] = existing.addPendingTask(PendingLocalTask(
+            localTaskId: localTask.id,
+            taskName: localTask.taskName,
+            createdAt: localTask.createdAt,
+          ));
+          _logger.info('Added local task "${localTask.taskName}" as pending for project $projectId');
+        } else {
+          // Task exists but project not in time entries - still show it
+          _logger.info('Local task project $projectId not in time entries, creating entry');
+          projectMap[projectId] = ProjectWithTime(
+            projectId: projectId,
+            projectName: 'Unknown Project',
+            totalTimeWorked: Duration.zero,
+          ).addPendingTask(PendingLocalTask(
+            localTaskId: localTask.id,
+            taskName: localTask.taskName,
+            createdAt: localTask.createdAt,
+          ));
+        }
       }
 
       setState(() {
@@ -327,6 +391,23 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
     setState(() {
       _projects[projectIndex] = _projects[projectIndex].addTask(task);
     });
+  }
+
+  /// Called when a pending local task is submitted to the API
+  /// This marks the task as submitted and deletes it from local storage
+  Future<void> _onPendingTaskSubmitted(int projectIndex, String localTaskId) async {
+    try {
+      // Delete from local storage
+      await ref.read(tasksProvider.notifier).deleteTask(localTaskId);
+      _logger.info('Deleted local task $localTaskId after API submission');
+
+      // Mark as submitted in the dialog state
+      setState(() {
+        _projects[projectIndex] = _projects[projectIndex].markPendingTaskSubmitted(localTaskId);
+      });
+    } catch (e) {
+      _logger.error('Failed to delete local task after submission', e, null);
+    }
   }
 
   bool get _canProceed {
@@ -554,8 +635,9 @@ class _MultiProjectTaskDialogState extends ConsumerState<MultiProjectTaskDialog>
           ...List.generate(_projects.length, (index) {
             return ProjectTaskCard(
               project: _projects[index],
-              initiallyExpanded: !_projects[index].hasTask, // Only expand if no tasks submitted
+              initiallyExpanded: !_projects[index].hasTask || _projects[index].pendingCount > 0,
               onTaskSubmitted: (task) => _onTaskSubmitted(index, task),
+              onPendingTaskSubmitted: (localTaskId) => _onPendingTaskSubmitted(index, localTaskId),
             );
           }),
         ],

@@ -2,10 +2,38 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
-/// Custom window control buttons (minimize, maximize, close)
+/// Custom window control buttons (minimize, fullscreen, close)
 /// for Windows desktop app with hidden title bar.
-class WindowControls extends StatelessWidget {
+class WindowControls extends StatefulWidget {
   const WindowControls({super.key});
+
+  @override
+  State<WindowControls> createState() => _WindowControlsState();
+}
+
+class _WindowControlsState extends State<WindowControls> {
+  bool _isFullScreen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFullScreenState();
+  }
+
+  Future<void> _checkFullScreenState() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final isFullScreen = await windowManager.isFullScreen();
+      if (mounted) {
+        setState(() => _isFullScreen = isFullScreen);
+      }
+    }
+  }
+
+  Future<void> _toggleFullScreen() async {
+    final newState = !_isFullScreen;
+    await windowManager.setFullScreen(newState);
+    setState(() => _isFullScreen = newState);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +52,11 @@ class WindowControls extends StatelessWidget {
             icon: Icons.remove,
             onPressed: () => windowManager.minimize(),
             tooltip: 'Minimize',
+          ),
+          _WindowButton(
+            icon: _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+            onPressed: _toggleFullScreen,
+            tooltip: _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
           ),
           _WindowButton(
             icon: Icons.close,

@@ -12,8 +12,10 @@ import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/window_provider.dart';
+import '../providers/attendance_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../services/click_through_service.dart';
+import '../models/project_with_time.dart';
 import 'floating_widget_constants.dart';
 import 'inline_task_entry.dart';
 import 'task_chip.dart';
@@ -90,7 +92,17 @@ class _FloatingWidgetState
       _ensureCorrectWindowSize();
       _startPositionMonitoring();
       _setupClickThrough();
+      _loadAttendanceData();
     });
+  }
+
+  /// Load attendance data if not already loaded
+  Future<void> _loadAttendanceData() async {
+    final attendanceState = ref.read(attendanceProvider);
+    // Only load if not already loaded (AttendanceInitial state)
+    if (attendanceState is AttendanceInitial) {
+      await ref.read(attendanceProvider.notifier).loadTodayAttendance();
+    }
   }
 
   /// Sets up click-through for Windows (entire window is click-through when collapsed)
@@ -310,6 +322,7 @@ class _FloatingWidgetState
   }
 
   /// Handles project selection from dropdown
+  /// When switching from an active project, shows task submission dialog
   Future<void> _onProjectTap(
     dynamic project,
     bool isActive,
@@ -320,12 +333,13 @@ class _FloatingWidgetState
       // Do nothing if clicking on active project - keep timer running
       // Just close the dropdown
     } else if (currentTimer != null) {
-      // Switch to different project if timer is running
-      await ref
-          .read(currentTimerProvider.notifier)
-          .switchProject(project);
+      // Switching to different project - navigate to main screen for task dialog
+      // Dashboard will handle showing dialog and switching project
+      await _handleProjectSwitchWithDialog(project, currentTimer);
+      // Don't close dropdown here - we're switching to main mode
+      return;
     } else {
-      // Start timer for selected project
+      // Start timer for selected project (no active timer)
       await ref
           .read(currentTimerProvider.notifier)
           .startTimer(project);
@@ -336,6 +350,32 @@ class _FloatingWidgetState
       _isExpanded = false;
     });
     await _updateWindowSize(false, projectCount);
+  }
+
+  /// Handle project switch with task submission dialog
+  /// Flow: Set navigation request → Switch to main screen → Dashboard handles dialog
+  Future<void> _handleProjectSwitchWithDialog(dynamic newProject, dynamic currentTimer) async {
+    // Get time for current project
+    final completedDurations = ref.read(completedProjectDurationsProvider);
+    final completedTime = completedDurations[currentTimer.projectId] ?? Duration.zero;
+    final totalTime = currentTimer.elapsedDuration + completedTime;
+
+    // Create ProjectWithTime for the current project and store it
+    final projectWithTime = ProjectWithTime(
+      projectId: currentTimer.projectId,
+      projectName: currentTimer.projectName,
+      totalTimeWorked: totalTime,
+    );
+
+    // Store data for dashboard to use
+    ref.read(projectSwitchDataProvider.notifier).state = projectWithTime;
+    ref.read(returnToFloatingProvider.notifier).state = true;
+
+    // Request navigation to project switch dialog
+    ref.read(navigationRequestProvider.notifier).requestProjectSwitch();
+
+    // Switch to main mode - dashboard will handle showing the dialog
+    await ref.read(windowModeProvider.notifier).switchToMain();
   }
 
   /// Switches back to the main dashboard window
@@ -453,9 +493,6 @@ class _FloatingWidgetState
     for (final duration in completedDurations.values) {
       sessionTotalTime += duration;
     }
-
-    // Debug: Print timer info on every build
-    debugPrint('FloatingWidget build - activeProjectTime: ${activeProjectTime.inSeconds}s, currentTimer: ${currentTimer?.projectName}, isRunning: ${currentTimer?.isRunning}');
 
     // Extract projects list from async state (empty list if loading/error)
     final projects =
@@ -714,11 +751,9 @@ class _FloatingWidgetState
               ),
             ),
 
-            // Buttons grouped on the right
-            if (currentTimer != null) ...[
-              _buildSubmitButton(),
-              const SizedBox(width: 4),
-            ],
+            // Check-In/Check-Out buttons stacked vertically
+            _buildCheckInOutButtons(),
+            const SizedBox(width: 4),
             _buildDropdownArrow(projects),
             _buildMaximizeButton(),
           ],
@@ -800,34 +835,158 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds the submit button for session report
-  Widget _buildSubmitButton() {
-    return InkWell(
-      onTap: () async {
-        // Set navigation request for submission form
-        ref
-            .read(navigationRequestProvider.notifier)
-            .requestSubmissionForm();
-        // Switch to main window - dashboard will handle navigation
-        await ref
-            .read(windowModeProvider.notifier)
-            .switchToMain();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: AppTheme.successColor.withValues(
-            alpha: 0.1,
+  /// Builds the Check-In and Check-Out buttons stacked vertically
+  Widget _buildCheckInOutButtons() {
+    final attendance = ref.watch(currentAttendanceProvider);
+    final isAttendanceLoading = ref.watch(isAttendanceLoadingProvider);
+
+    // isCurrentlyCheckedIn: odd intervals = checked in, even intervals = checked out
+    final isCurrentlyCheckedIn = attendance?.isCurrentlyCheckedIn == true;
+
+    // Check-in should be disabled if:
+    // 1. Attendance is loading
+    // 2. Currently in a checked-in session (odd intervals)
+    final canCheckIn = !isAttendanceLoading && !isCurrentlyCheckedIn;
+
+    // Check-out should be enabled only when:
+    // 1. Attendance is not loading
+    // 2. Currently in a checked-in session (odd intervals)
+    final canCheckOut = !isAttendanceLoading && isCurrentlyCheckedIn;
+
+    // For UI display: hasCheckedIn means user has checked in at least once today
+    final hasCheckedInToday = attendance?.hasCheckedIn == true;
+    // Currently checked out = not in active session but has checked in before
+    final isCurrentlyCheckedOut = hasCheckedInToday && !isCurrentlyCheckedIn;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Check-In button with tooltip to the left
+        // Gray when disabled (already checked in), blue when can check in
+        _buildTooltipLeft(
+          message: isCurrentlyCheckedIn
+              ? 'Already checked in'
+              : 'Check In',
+          child: InkWell(
+            onTap: canCheckIn ? _handleCheckIn : null,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: canCheckIn
+                    ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                    : AppTheme.textHint.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                Icons.login,
+                size: 14,
+                color: canCheckIn ? AppTheme.primaryColor : AppTheme.textHint,
+              ),
+            ),
           ),
-          borderRadius: BorderRadius.circular(6),
         ),
-        child: const Icon(
-          Icons.send,
-          size: 16,
-          color: AppTheme.successColor,
+        const SizedBox(height: 4),
+        // Check-Out button with tooltip to the left
+        // Gray when disabled (not checked in), orange when can check out
+        _buildTooltipLeft(
+          message: isCurrentlyCheckedOut
+              ? 'Checked out at ${attendance?.formattedCheckOut ?? '--'}'
+              : (canCheckOut ? 'Check Out' : 'Check in first'),
+          child: InkWell(
+            onTap: canCheckOut ? _handleCheckOut : null,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: canCheckOut
+                    ? AppTheme.warningColor.withValues(alpha: 0.1)
+                    : AppTheme.textHint.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                Icons.logout,
+                size: 14,
+                color: canCheckOut ? AppTheme.warningColor : AppTheme.textHint,
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  /// Builds a tooltip that appears to the left of the widget
+  Widget _buildTooltipLeft({required String message, required Widget child}) {
+    return Tooltip(
+      message: message,
+      preferBelow: false,
+      verticalOffset: 0,
+      margin: const EdgeInsets.only(right: 60),
+      decoration: BoxDecoration(
+        color: AppTheme.textPrimary.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      textStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+      ),
+      child: child,
+    );
+  }
+
+  /// Handle check-in action
+  Future<void> _handleCheckIn() async {
+    final attendance = ref.read(currentAttendanceProvider);
+
+    // Already in an active checked-in session (odd intervals)
+    if (attendance?.isCurrentlyCheckedIn == true) {
+      context.showSnackBar(
+        'Already checked in at ${attendance!.formattedCheckIn}',
+      );
+      return;
+    }
+
+    // Confirm check-in
+    final confirmed = await context.showAlertDialog(
+      title: 'Check In',
+      content: 'Would you like to check in for today?',
+      confirmText: 'Check In',
+      cancelText: 'Later',
+    );
+
+    if (confirmed == true) {
+      try {
+        final success = await ref.read(attendanceProvider.notifier).recordBiometric();
+        if (success && mounted) {
+          context.showSuccessSnackBar('Checked in successfully');
+        }
+      } catch (e) {
+        if (mounted) {
+          context.showErrorSnackBar('Failed to check in: $e');
+        }
+      }
+    }
+  }
+
+  /// Handle check-out action
+  /// Flow: Set navigation request → Switch to main screen → Dashboard handles dialog and checkout
+  Future<void> _handleCheckOut() async {
+    final attendance = ref.read(currentAttendanceProvider);
+
+    // Must be in an active checked-in session (odd intervals)
+    if (attendance?.isCurrentlyCheckedIn != true) {
+      return;
+    }
+
+    // Mark that we should return to floating after checkout
+    ref.read(returnToFloatingProvider.notifier).state = true;
+
+    // Request navigation to checkout dialog
+    ref.read(navigationRequestProvider.notifier).requestCheckout();
+
+    // Switch to main mode - dashboard will handle showing the dialog
+    await ref.read(windowModeProvider.notifier).switchToMain();
   }
 
   /// Builds the switch projects button
@@ -1309,9 +1468,7 @@ class _FloatingWidgetState
                                     projectId: project.id,
                                     taskName: taskName,
                                   );
-                              if (mounted) {
-                                context.showSuccessSnackBar('Task added');
-                              }
+                              // Note: Can't show snackbar in floating mode - no Scaffold
                             },
                           ),
                         ],

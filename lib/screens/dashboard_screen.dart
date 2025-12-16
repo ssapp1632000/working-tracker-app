@@ -13,6 +13,8 @@ import '../providers/task_provider.dart';
 import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../providers/attendance_provider.dart';
+import '../services/api_service.dart';
+import '../services/logger_service.dart';
 import '../services/window_service.dart';
 import '../widgets/window_controls.dart';
 import '../widgets/inline_task_entry.dart';
@@ -36,6 +38,7 @@ class _DashboardScreenState
   bool _isHandlingNavigation = false;
   bool _hasCheckedOpenEntry = false;
   bool _hasLoadedAttendance = false;
+  bool _hasSyncedTasks = false;
   bool _isLoading = false;
   String _searchQuery = '';
   String? _expandedTaskEntryProjectId;
@@ -43,6 +46,8 @@ class _DashboardScreenState
   final TextEditingController _searchController =
       TextEditingController();
   final _windowService = WindowService();
+  final _api = ApiService();
+  final _logger = LoggerService();
 
   @override
   void initState() {
@@ -51,6 +56,7 @@ class _DashboardScreenState
     // Load attendance on init
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAttendanceOnce();
+      _syncTasksFromApi();
     });
   }
 
@@ -59,6 +65,68 @@ class _DashboardScreenState
     if (!_hasLoadedAttendance) {
       _hasLoadedAttendance = true;
       ref.read(attendanceProvider.notifier).loadTodayAttendance();
+    }
+  }
+
+  /// Sync tasks from API to local storage for dashboard display
+  Future<void> _syncTasksFromApi() async {
+    if (_hasSyncedTasks) return;
+    _hasSyncedTasks = true;
+
+    try {
+      // Get the attendance day (or today if not checked in)
+      final attendance = ref.read(currentAttendanceProvider);
+      final reportDate = attendance?.day ?? DateTime.now();
+      _logger.info('Syncing tasks from API for date: $reportDate');
+
+      final dailyReport = await _api.getDailyReportByDate(reportDate);
+      if (dailyReport == null) {
+        _logger.info('No daily report found for task sync');
+        return;
+      }
+
+      final tasks = dailyReport['tasks'] as List?;
+      if (tasks == null || tasks.isEmpty) {
+        _logger.info('No tasks to sync');
+        return;
+      }
+
+      // Get existing local tasks to avoid duplicates
+      final existingLocalTasks = ref.read(tasksProvider).valueOrNull ?? [];
+      final existingTaskKeys = existingLocalTasks
+          .map((t) => '${t.projectId}:${t.taskName}')
+          .toSet();
+
+      int syncedCount = 0;
+      for (final task in tasks) {
+        final projectField = task['project'];
+        String projectId = '';
+        if (projectField is Map) {
+          projectId = projectField['_id']?.toString() ?? '';
+        } else if (projectField is String) {
+          projectId = projectField;
+        }
+
+        final taskName = task['title']?.toString() ?? 'Untitled Task';
+        final taskKey = '$projectId:$taskName';
+
+        if (projectId.isNotEmpty && !existingTaskKeys.contains(taskKey)) {
+          try {
+            await ref.read(tasksProvider.notifier).createTask(
+              projectId: projectId,
+              taskName: taskName,
+            );
+            existingTaskKeys.add(taskKey);
+            syncedCount++;
+          } catch (e) {
+            _logger.warning('Could not sync task "$taskName": $e');
+          }
+        }
+      }
+
+      _logger.info('Synced $syncedCount tasks from API to local storage');
+    } catch (e) {
+      _logger.warning('Failed to sync tasks from API: $e');
     }
   }
 
@@ -194,8 +262,8 @@ class _DashboardScreenState
   Future<void> _handleCheckIn() async {
     final attendance = ref.read(currentAttendanceProvider);
 
-    // Already checked in today
-    if (attendance?.hasCheckedIn == true) {
+    // Already in an active checked-in session (odd intervals)
+    if (attendance?.isCurrentlyCheckedIn == true) {
       await context.showAlertDialog(
         title: 'Already Checked In',
         content: 'You have already checked in today at ${attendance!.formattedCheckIn}.',
@@ -236,8 +304,8 @@ class _DashboardScreenState
     final attendance = ref.read(currentAttendanceProvider);
     final currentTimer = ref.read(currentTimerProvider);
 
-    // Must have checked in first
-    if (attendance?.hasCheckedIn != true) {
+    // Must be in an active checked-in session (odd intervals)
+    if (attendance?.isCurrentlyCheckedIn != true) {
       await context.showAlertDialog(
         title: 'Cannot Check Out',
         content: 'You need to check in first before checking out.',
@@ -287,21 +355,9 @@ class _DashboardScreenState
   /// Handle project start - check if there are existing time entries today needing tasks
   /// Same logic as checkout, but only shows dialog if there ARE time entries
   Future<bool> _handleProjectStart() async {
-    // Show multi-project task dialog for all projects with time entries today
-    // This is the same logic we run when we get an open event from the socket
-    final result = await MultiProjectTaskDialog.showForCheckout(
-      context: context,
-    );
-
-    // If dialog returned null (no projects with time entries), proceed
-    // If user cancelled, abort
-    // If user submitted all tasks, proceed
-    if (result == null) {
-      // No time entries today - proceed with starting project
-      return true;
-    }
-
-    return result.shouldProceed;
+    // When starting a new project with no active timer, just proceed directly
+    // No need to show task dialog - that's only for switching or checkout
+    return true;
   }
 
   /// Handle project switch with task submission dialog
@@ -337,6 +393,105 @@ class _DashboardScreenState
     return true; // No active timer or same project
   }
 
+  /// Handle checkout request from floating widget
+  /// Shows the checkout dialog and returns to floating mode after
+  Future<void> _handleCheckoutFromFloating() async {
+    final shouldReturnToFloating = ref.read(returnToFloatingProvider);
+    final currentTimer = ref.read(currentTimerProvider);
+
+    // Show multi-project task dialog for checkout
+    final result = await MultiProjectTaskDialog.showForCheckout(
+      context: context,
+    );
+
+    // User cancelled - return to floating mode if needed
+    if (result == null || !result.shouldProceed) {
+      if (shouldReturnToFloating && mounted) {
+        ref.read(returnToFloatingProvider.notifier).state = false;
+        await ref.read(windowModeProvider.notifier).switchToFloating();
+      }
+      return;
+    }
+
+    // Stop the timer if running
+    if (currentTimer != null) {
+      setState(() => _isLoading = true);
+      try {
+        await ref.read(currentTimerProvider.notifier).stopTimer();
+      } catch (e) {
+        if (mounted) {
+          context.showErrorSnackBar('Failed to stop timer: $e');
+        }
+      }
+    }
+
+    // Record check-out
+    setState(() => _isLoading = true);
+    try {
+      final success = await ref.read(attendanceProvider.notifier).recordBiometric();
+      if (success && mounted) {
+        context.showSuccessSnackBar('Checked out successfully');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showErrorSnackBar('Failed to check out: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+
+    // Return to floating mode after checkout
+    if (shouldReturnToFloating && mounted) {
+      ref.read(returnToFloatingProvider.notifier).state = false;
+      await Future.delayed(const Duration(milliseconds: 300));
+      await ref.read(windowModeProvider.notifier).switchToFloating();
+    }
+  }
+
+  /// Handle project switch request from floating widget
+  /// Shows the task dialog and returns to floating mode after
+  Future<void> _handleProjectSwitchFromFloating() async {
+    final shouldReturnToFloating = ref.read(returnToFloatingProvider);
+    final projectWithTime = ref.read(projectSwitchDataProvider);
+
+    if (projectWithTime == null) {
+      // No project data - just return to floating
+      if (shouldReturnToFloating && mounted) {
+        ref.read(returnToFloatingProvider.notifier).state = false;
+        ref.read(projectSwitchDataProvider.notifier).state = null;
+        await ref.read(windowModeProvider.notifier).switchToFloating();
+      }
+      return;
+    }
+
+    // Show task dialog for the project being switched FROM
+    final result = await MultiProjectTaskDialog.showForProjectSwitch(
+      context: context,
+      project: projectWithTime,
+    );
+
+    // Clear the stored project data
+    ref.read(projectSwitchDataProvider.notifier).state = null;
+
+    // User cancelled - return to floating mode without switching
+    if (result == null || !result.shouldProceed) {
+      if (shouldReturnToFloating && mounted) {
+        ref.read(returnToFloatingProvider.notifier).state = false;
+        await ref.read(windowModeProvider.notifier).switchToFloating();
+      }
+      return;
+    }
+
+    // Task submitted - return to floating mode (project switch happens in floating widget)
+    if (shouldReturnToFloating && mounted) {
+      ref.read(returnToFloatingProvider.notifier).state = false;
+      await Future.delayed(const Duration(milliseconds: 300));
+      await ref.read(windowModeProvider.notifier).switchToFloating();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -352,19 +507,27 @@ class _DashboardScreenState
     final activeTaskId = ref.watch(activeTaskIdProvider);
 
     // Handle navigation request from floating widget (only once)
-    if (navigationRequest ==
-            NavigationRequest.submissionForm &&
-        !_isHandlingNavigation) {
+    if (navigationRequest != null && !_isHandlingNavigation) {
       _isHandlingNavigation = true;
 
-      // Use post frame callback to clear and navigate after build completes
+      // Use post frame callback to handle after build completes
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           // Clear the navigation request after build is complete
-          ref
-              .read(navigationRequestProvider.notifier)
-              .clearRequest();
-          _handleSubmissionForm();
+          ref.read(navigationRequestProvider.notifier).clearRequest();
+
+          switch (navigationRequest) {
+            case NavigationRequest.submissionForm:
+              _handleSubmissionForm();
+              break;
+            case NavigationRequest.checkout:
+              _handleCheckoutFromFloating();
+              break;
+            case NavigationRequest.projectSwitch:
+              _handleProjectSwitchFromFloating();
+              break;
+          }
+
           _isHandlingNavigation = false;
         }
       });
@@ -515,7 +678,10 @@ class _DashboardScreenState
                   builder: (context) {
                     final attendance = ref.watch(currentAttendanceProvider);
                     final isAttendanceLoading = ref.watch(isAttendanceLoadingProvider);
-                    final hasCheckedIn = attendance?.hasCheckedIn ?? false;
+                    // isCurrentlyCheckedIn: odd intervals = checked in, even intervals = checked out
+                    final isCurrentlyCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+                    // isCurrentlyCheckedOut: has checked in before but not in active session
+                    final isCurrentlyCheckedOut = (attendance?.hasCheckedIn ?? false) && !isCurrentlyCheckedIn;
 
                     return Container(
                       padding: const EdgeInsets.all(12),
@@ -544,7 +710,7 @@ class _DashboardScreenState
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: hasCheckedIn
+                                    color: isCurrentlyCheckedIn
                                         ? AppTheme.successColor
                                         : AppTheme.textPrimary,
                                   ),
@@ -553,14 +719,14 @@ class _DashboardScreenState
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: isAttendanceLoading || hasCheckedIn
+                                    onPressed: isAttendanceLoading || isCurrentlyCheckedIn
                                         ? null
                                         : _handleCheckIn,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: hasCheckedIn
+                                      backgroundColor: isCurrentlyCheckedIn
                                           ? AppTheme.successColor.withValues(alpha: 0.2)
                                           : AppTheme.successColor,
-                                      foregroundColor: hasCheckedIn
+                                      foregroundColor: isCurrentlyCheckedIn
                                           ? AppTheme.successColor
                                           : Colors.white,
                                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -569,7 +735,7 @@ class _DashboardScreenState
                                       ),
                                     ),
                                     child: Text(
-                                      hasCheckedIn ? 'Checked In' : 'Check In',
+                                      isCurrentlyCheckedIn ? 'Checked In' : 'Check In',
                                       style: const TextStyle(fontSize: 12),
                                     ),
                                   ),
@@ -603,7 +769,7 @@ class _DashboardScreenState
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: attendance?.hasCheckedOut == true
+                                    color: isCurrentlyCheckedOut
                                         ? AppTheme.primaryColor
                                         : AppTheme.textPrimary,
                                   ),
@@ -612,11 +778,11 @@ class _DashboardScreenState
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: isAttendanceLoading || !hasCheckedIn
+                                    onPressed: isAttendanceLoading || !isCurrentlyCheckedIn
                                         ? null
                                         : _handleCheckOut,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: hasCheckedIn
+                                      backgroundColor: isCurrentlyCheckedIn
                                           ? AppTheme.primaryColor
                                           : AppTheme.borderColor,
                                       foregroundColor: Colors.white,
@@ -836,8 +1002,9 @@ class _DashboardScreenState
                                       child: Row(
                                         children: [
                                           // Project card - shrinks to 70% on hover
-                                          AnimatedContainer(
-                                            duration:
+                                          Flexible(
+                                            child: AnimatedContainer(
+                                              duration:
                                                 const Duration(
                                                   milliseconds:
                                                       200,
@@ -934,20 +1101,15 @@ class _DashboardScreenState
                                                         ),
                                                       ),
                                                       // Time for this project (today's time)
-                                                      // Active project: current elapsed + any completed time today
-                                                      // Inactive projects: completed time today only
                                                       Builder(
                                                         builder: (context) {
-                                                          // Get completed time for this project from today's entries
                                                           final completedDurations = ref.watch(completedProjectDurationsProvider);
                                                           final completedTime = completedDurations[project.id] ?? Duration.zero;
 
                                                           final Duration displayTime;
                                                           if (isActive && currentTimer != null) {
-                                                            // Active project - current elapsed + any completed time today
                                                             displayTime = currentTimer.elapsedDuration + completedTime;
                                                           } else {
-                                                            // Inactive project - only completed time today
                                                             displayTime = completedTime;
                                                           }
 
@@ -956,13 +1118,9 @@ class _DashboardScreenState
                                                           }
 
                                                           return Padding(
-                                                            padding: const EdgeInsets.only(
-                                                              right: 8,
-                                                            ),
+                                                            padding: const EdgeInsets.only(right: 8),
                                                             child: Text(
-                                                              DateTimeUtils.formatDuration(
-                                                                displayTime,
-                                                              ),
+                                                              DateTimeUtils.formatDuration(displayTime),
                                                               style: TextStyle(
                                                                 color: isActive
                                                                     ? AppTheme.successColor
@@ -990,6 +1148,7 @@ class _DashboardScreenState
                                                 ),
                                               ),
                                             ),
+                                          ),
                                           ),
                                           // Green "Start Timer" button - slides in from right
                                           Tooltip(

@@ -44,10 +44,27 @@ class AttendanceDay {
   });
 
   // Computed properties
+  /// Whether user has checked in at least once today
   bool get hasCheckedIn => intervals.isNotEmpty;
-  bool get hasCheckedOut => intervals.length > 1;
+
+  /// Whether user is currently checked out (even number of intervals means last action was checkout)
+  /// Odd intervals = currently checked in, Even intervals = currently checked out
+  bool get hasCheckedOut => intervals.isNotEmpty && intervals.length.isEven;
+
+  /// Whether user is currently in an active work session (checked in but not checked out)
+  bool get isCurrentlyCheckedIn => intervals.isNotEmpty && intervals.length.isOdd;
+
   DateTime? get checkInTime => intervals.isNotEmpty ? intervals[0] : null;
   DateTime? get checkOutTime => intervals.length > 1 ? intervals.last : null;
+
+  /// Get the most recent check-in time (last odd-indexed interval)
+  DateTime? get lastCheckInTime {
+    if (intervals.isEmpty) return null;
+    // If odd number of intervals, last one is check-in
+    // If even number, second-to-last is check-in
+    final idx = intervals.length.isOdd ? intervals.length - 1 : intervals.length - 2;
+    return idx >= 0 ? intervals[idx] : null;
+  }
 
   String get formattedCheckIn => checkInTime != null
       ? DateFormat('h:mm a').format(checkInTime!.toLocal())

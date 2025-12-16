@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task.dart';
 import '../services/task_service.dart';
+import '../services/api_service.dart';
 import '../services/logger_service.dart';
 import 'auth_provider.dart';
 
@@ -138,6 +139,69 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<Task>>> {
     } catch (e, stackTrace) {
       _logger.error('Failed to clear all tasks', e, stackTrace);
       rethrow;
+    }
+  }
+
+  /// Sync tasks from API for a specific date
+  /// This fetches daily reports from the server and syncs them to local storage
+  Future<void> syncTasksFromApi(DateTime date) async {
+    try {
+      final api = ApiService();
+      _logger.info('Syncing tasks from API for date: $date');
+
+      final dailyReport = await api.getDailyReportByDate(date);
+
+      if (dailyReport == null) {
+        _logger.info('No daily report found for $date');
+        return;
+      }
+
+      // Parse tasks from daily report
+      final tasksJson = dailyReport['tasks'] as List<dynamic>? ?? [];
+      _logger.info('Found ${tasksJson.length} tasks in daily report');
+
+      for (final taskJson in tasksJson) {
+        final taskMap = taskJson as Map<String, dynamic>;
+
+        // Extract project ID
+        final projectField = taskMap['project'];
+        String? projectId;
+        if (projectField is Map) {
+          projectId = projectField['_id']?.toString();
+        } else {
+          projectId = projectField?.toString();
+        }
+
+        if (projectId == null) continue;
+
+        final taskName = taskMap['title']?.toString() ?? '';
+        final taskId = taskMap['_id']?.toString() ??
+            DateTime.now().millisecondsSinceEpoch.toString();
+
+        // Check if task already exists locally
+        final existingTasks = state.valueOrNull ?? [];
+        final exists = existingTasks.any((t) =>
+            t.projectId == projectId && t.taskName == taskName);
+
+        if (!exists && taskName.isNotEmpty) {
+          // Create local task
+          final task = Task(
+            id: taskId,
+            projectId: projectId,
+            taskName: taskName,
+            createdAt: DateTime.now(),
+          );
+
+          await _taskService.updateTask(task);
+          state = state.whenData((tasks) => [...tasks, task]);
+          _logger.info('Synced task from API: $taskName for project $projectId');
+        }
+      }
+
+      _logger.info('Task sync completed');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to sync tasks from API', e, stackTrace);
+      // Don't rethrow - this is a background sync operation
     }
   }
 

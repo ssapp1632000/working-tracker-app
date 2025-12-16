@@ -9,12 +9,14 @@ class ProjectTaskCard extends StatefulWidget {
   final ProjectWithTime project;
   final bool initiallyExpanded;
   final Function(SubmittedTaskInfo task) onTaskSubmitted;
+  final Function(String localTaskId)? onPendingTaskSubmitted;
 
   const ProjectTaskCard({
     super.key,
     required this.project,
     this.initiallyExpanded = false,
     required this.onTaskSubmitted,
+    this.onPendingTaskSubmitted,
   });
 
   @override
@@ -24,6 +26,7 @@ class ProjectTaskCard extends StatefulWidget {
 class _ProjectTaskCardState extends State<ProjectTaskCard>
     with SingleTickerProviderStateMixin {
   late bool _isExpanded;
+  late bool _showAddForm;
   late AnimationController _animationController;
   late Animation<double> _expandAnimation;
 
@@ -31,6 +34,8 @@ class _ProjectTaskCardState extends State<ProjectTaskCard>
   void initState() {
     super.initState();
     _isExpanded = widget.initiallyExpanded;
+    // Show form by default only if project has no tasks
+    _showAddForm = !widget.project.hasTask;
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -233,61 +238,32 @@ class _ProjectTaskCardState extends State<ProjectTaskCard>
                   color: AppTheme.borderColor,
                 ),
 
-                // Task Form
+                // Task Form or Add Button
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Add Task Form
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.backgroundColor,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.borderColor),
+                      // Pending Local Tasks (need description/attachments before submission)
+                      if (widget.project.pendingLocalTasks.isNotEmpty) ...[
+                        Text(
+                          'Tasks to Submit',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.warningColor,
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.add_task,
-                                  size: 16,
-                                  color: AppTheme.primaryColor,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Add New Task',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            TaskFormWidget(
-                              projectId: widget.project.projectId,
-                              compact: true,
-                              onTaskSubmitted: (taskName, description) {
-                                final task = SubmittedTaskInfo(
-                                  taskName: taskName,
-                                  description: description,
-                                  submittedAt: DateTime.now(),
-                                );
-                                widget.onTaskSubmitted(task);
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
+                        const SizedBox(height: 8),
+                        ...widget.project.pendingLocalTasks
+                            .where((t) => !t.isSubmitted)
+                            .map((task) => _buildPendingTaskForm(task)),
+                        const SizedBox(height: 12),
+                      ],
 
-                      // Submitted Tasks List
-                      if (widget.project.submittedTasks.isNotEmpty) ...[
-                        const SizedBox(height: 16),
+                      // Submitted Tasks List (show first if has tasks)
+                      if (widget.project.submittedTasks.isNotEmpty ||
+                          widget.project.pendingLocalTasks.any((t) => t.isSubmitted)) ...[
                         Text(
                           'Submitted Tasks',
                           style: TextStyle(
@@ -298,7 +274,109 @@ class _ProjectTaskCardState extends State<ProjectTaskCard>
                         ),
                         const SizedBox(height: 8),
                         ...widget.project.submittedTasks.map((task) => _buildTaskItem(task)),
+                        ...widget.project.pendingLocalTasks
+                            .where((t) => t.isSubmitted)
+                            .map((task) => _buildSubmittedPendingTaskItem(task)),
+                        const SizedBox(height: 12),
                       ],
+
+                      // Show Add Task Form or Add Button
+                      if (_showAddForm)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.backgroundColor,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.borderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.add_task,
+                                    size: 16,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Add New Task',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                    ),
+                                  ),
+                                  // Close button (only show if project has tasks)
+                                  if (widget.project.hasTask)
+                                    GestureDetector(
+                                      onTap: () => setState(() => _showAddForm = false),
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 18,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              TaskFormWidget(
+                                projectId: widget.project.projectId,
+                                compact: true,
+                                onTaskSubmitted: (taskName, description) {
+                                  final task = SubmittedTaskInfo(
+                                    taskName: taskName,
+                                    description: description,
+                                    submittedAt: DateTime.now(),
+                                  );
+                                  widget.onTaskSubmitted(task);
+                                  // Hide form after submission if project already had tasks
+                                  if (widget.project.hasTask) {
+                                    setState(() => _showAddForm = false);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        // Add New Task Button
+                        InkWell(
+                          onTap: () => setState(() => _showAddForm = true),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add,
+                                  size: 18,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Add New Task',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -359,6 +437,122 @@ class _ProjectTaskCardState extends State<ProjectTaskCard>
           ),
           Text(
             _formatTime(task.submittedAt),
+            style: TextStyle(
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build a form for a pending local task that needs description/attachments
+  Widget _buildPendingTaskForm(PendingLocalTask task) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warningColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppTheme.warningColor.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Task name header
+          Row(
+            children: [
+              Icon(
+                Icons.edit_note,
+                size: 16,
+                color: AppTheme.warningColor,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  task.taskName,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.warningColor,
+                  ),
+                ),
+              ),
+              Text(
+                _formatTime(task.createdAt),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add description and attachments to submit this task',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Use TaskFormWidget but pre-fill the task name
+          TaskFormWidget(
+            projectId: widget.project.projectId,
+            compact: true,
+            initialTaskName: task.taskName,
+            onTaskSubmitted: (taskName, description) {
+              // Task was submitted to API, notify parent to delete from local storage
+              final submittedTask = SubmittedTaskInfo(
+                taskName: taskName,
+                description: description,
+                submittedAt: DateTime.now(),
+              );
+              widget.onTaskSubmitted(submittedTask);
+              widget.onPendingTaskSubmitted?.call(task.localTaskId);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build a display for a pending task that has been submitted
+  Widget _buildSubmittedPendingTaskItem(PendingLocalTask task) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.successColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: AppTheme.successColor.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.check_circle,
+            size: 16,
+            color: AppTheme.successColor,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              task.taskName,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          Text(
+            _formatTime(task.createdAt),
             style: TextStyle(
               fontSize: 10,
               color: AppTheme.textSecondary,

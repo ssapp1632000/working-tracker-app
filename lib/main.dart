@@ -45,8 +45,8 @@ void main() async {
       final isLoggedIn = authService.isLoggedIn();
 
       // Auth screens: window IS the card, tight fit
-      // Dashboard: slightly taller for more content
-      final windowSize = isLoggedIn ? const Size(380, 580) : const Size(380, 340);
+      // Dashboard: larger for new project card UI
+      final windowSize = isLoggedIn ? const Size(420, 800) : const Size(420, 400);
 
       WindowOptions windowOptions = WindowOptions(
         size: windowSize,

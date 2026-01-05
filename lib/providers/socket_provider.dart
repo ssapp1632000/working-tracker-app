@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/attendance_event.dart';
 import '../models/time_entry_event.dart';
 import '../services/socket_service.dart';
 import '../services/logger_service.dart';
@@ -19,6 +20,12 @@ final socketConnectedProvider = StateProvider<bool>((ref) {
 final timeEntryEventStreamProvider = StreamProvider<TimeEntryEvent>((ref) {
   final socketService = ref.watch(socketServiceProvider);
   return socketService.eventStream;
+});
+
+// Stream provider for attendance events
+final attendanceEventStreamProvider = StreamProvider<AttendanceEvent>((ref) {
+  final socketService = ref.watch(socketServiceProvider);
+  return socketService.attendanceEventStream;
 });
 
 // Provider to initialize and manage socket connection

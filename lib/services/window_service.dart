@@ -31,8 +31,8 @@ class WindowService {
       await windowManager.ensureInitialized();
 
       WindowOptions windowOptions = const WindowOptions(
-        size: Size(380, 580),
-        minimumSize: Size(380, 580),
+        size: Size(420, 800),
+        minimumSize: Size(420, 800),
         center: true,
         backgroundColor: Color(0xFF1A1A2E),
         skipTaskbar: false,
@@ -102,14 +102,14 @@ class WindowService {
 
     try {
       await windowManager.ensureInitialized();
-      // Set minimum size to current default (380x580)
-      await windowManager.setMinimumSize(const Size(380, 580));
+      // Set minimum size to current default (420x800)
+      await windowManager.setMinimumSize(const Size(420, 800));
       // Remove maximum size constraint to allow free resizing
       await windowManager.setMaximumSize(const Size(1920, 1080));
       await windowManager.setResizable(true);
-      await windowManager.setSize(const Size(380, 580));
+      await windowManager.setSize(const Size(420, 800));
       await windowManager.center();
-      _logger.info('Dashboard window size set (resizable, min: 380x580)');
+      _logger.info('Dashboard window size set (resizable, min: 420x800)');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to set dashboard window size',
@@ -246,15 +246,15 @@ class WindowService {
         _logger.warning('Could not restore title bar: $e');
       }
 
-      // Set window size for dashboard with free resizing (min: 380x580)
+      // Set window size for dashboard with free resizing (min: 420x800)
       await windowManager.setMinimumSize(
-        const Size(380, 580),
+        const Size(420, 800),
       );
       await windowManager.setMaximumSize(
         const Size(1920, 1080),
       );
       await windowManager.setResizable(true);
-      await windowManager.setSize(const Size(380, 580));
+      await windowManager.setSize(const Size(420, 800));
       await windowManager.center();
 
       // Ensure window is visible
@@ -272,7 +272,7 @@ class WindowService {
       await ClickThroughService.disableClickThrough();
 
       _logger.info(
-        'Window configured for main mode (380x580)',
+        'Window configured for main mode (420x800)',
       );
     } catch (e, stackTrace) {
       _logger.error(

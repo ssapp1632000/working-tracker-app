@@ -17,9 +17,8 @@ import '../services/api_service.dart';
 import '../services/logger_service.dart';
 import '../services/window_service.dart';
 import '../widgets/window_controls.dart';
-import '../widgets/inline_task_entry.dart';
-import '../widgets/task_chip.dart';
 import '../widgets/multi_project_task_dialog.dart';
+import '../widgets/project_list_card.dart';
 import '../models/project_with_time.dart';
 import 'login_screen.dart';
 import 'submission_form_screen.dart';
@@ -41,13 +40,12 @@ class _DashboardScreenState
   bool _hasSyncedTasks = false;
   bool _isLoading = false;
   String _searchQuery = '';
-  String? _expandedTaskEntryProjectId;
-  String? _hoveredProjectId;
   final TextEditingController _searchController =
       TextEditingController();
   final _windowService = WindowService();
   final _api = ApiService();
   final _logger = LoggerService();
+  AttendanceNotifier? _attendanceNotifier;
 
   @override
   void initState() {
@@ -60,11 +58,16 @@ class _DashboardScreenState
     });
   }
 
-  /// Load attendance data once
+  /// Load attendance data once and start polling
   void _loadAttendanceOnce() {
     if (!_hasLoadedAttendance) {
       _hasLoadedAttendance = true;
-      ref.read(attendanceProvider.notifier).loadTodayAttendance();
+      // Cache the notifier reference for safe disposal later
+      _attendanceNotifier = ref.read(attendanceProvider.notifier);
+      // Use the new status endpoint for periods support
+      _attendanceNotifier!.loadAttendanceStatus();
+      // Start polling to catch mobile app check-ins/outs
+      _attendanceNotifier!.startPolling();
     }
   }
 
@@ -142,6 +145,8 @@ class _DashboardScreenState
   @override
   void dispose() {
     _searchController.dispose();
+    // Stop attendance polling when leaving dashboard
+    _attendanceNotifier?.stopPolling();
     super.dispose();
   }
 
@@ -254,100 +259,6 @@ class _DashboardScreenState
             'Session submitted successfully',
           );
         }
-      }
-    }
-  }
-
-  /// Handle check-in action
-  Future<void> _handleCheckIn() async {
-    final attendance = ref.read(currentAttendanceProvider);
-
-    // Already in an active checked-in session (odd intervals)
-    if (attendance?.isCurrentlyCheckedIn == true) {
-      await context.showAlertDialog(
-        title: 'Already Checked In',
-        content: 'You have already checked in today at ${attendance!.formattedCheckIn}.',
-        confirmText: 'OK',
-      );
-      return;
-    }
-
-    // Confirm check-in
-    final confirmed = await context.showAlertDialog(
-      title: 'Check In',
-      content: 'Would you like to check in for today?',
-      confirmText: 'Check In',
-      cancelText: 'Later',
-    );
-
-    if (confirmed == true) {
-      setState(() => _isLoading = true);
-      try {
-        final success = await ref.read(attendanceProvider.notifier).recordBiometric();
-        if (success && mounted) {
-          context.showSuccessSnackBar('Checked in successfully');
-        }
-      } catch (e) {
-        if (mounted) {
-          context.showErrorSnackBar('Failed to check in: $e');
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
-      }
-    }
-  }
-
-  /// Handle check-out action
-  Future<void> _handleCheckOut() async {
-    final attendance = ref.read(currentAttendanceProvider);
-    final currentTimer = ref.read(currentTimerProvider);
-
-    // Must be in an active checked-in session (odd intervals)
-    if (attendance?.isCurrentlyCheckedIn != true) {
-      await context.showAlertDialog(
-        title: 'Cannot Check Out',
-        content: 'You need to check in first before checking out.',
-        confirmText: 'OK',
-      );
-      return;
-    }
-
-    // Show multi-project task dialog for all projects with time entries today
-    final result = await MultiProjectTaskDialog.showForCheckout(
-      context: context,
-    );
-
-    // User cancelled
-    if (result == null || !result.shouldProceed) return;
-
-    // Stop the timer if running
-    if (currentTimer != null) {
-      setState(() => _isLoading = true);
-      try {
-        await ref.read(currentTimerProvider.notifier).stopTimer();
-      } catch (e) {
-        if (mounted) {
-          context.showErrorSnackBar('Failed to stop timer: $e');
-        }
-      }
-    }
-
-    // Record check-out
-    setState(() => _isLoading = true);
-    try {
-      final success = await ref.read(attendanceProvider.notifier).recordBiometric();
-      if (success && mounted) {
-        context.showSuccessSnackBar('Checked out successfully');
-      }
-    } catch (e) {
-      if (mounted) {
-        context.showErrorSnackBar('Failed to check out: $e');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -501,10 +412,6 @@ class _DashboardScreenState
     final navigationRequest = ref.watch(
       navigationRequestProvider,
     );
-    final sessionTotalTime = ref.watch(
-      sessionTotalTimeProvider,
-    );
-    final activeTaskId = ref.watch(activeTaskIdProvider);
 
     // Handle navigation request from floating widget (only once)
     if (navigationRequest != null && !_isHandlingNavigation) {
@@ -539,8 +446,10 @@ class _DashboardScreenState
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      body: Stack(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: AppTheme.backgroundDecoration,
+        child: Stack(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -632,60 +541,19 @@ class _DashboardScreenState
                 ),
                 const SizedBox(height: 12),
 
-                // Timer display - Achievement style with gold border
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withValues(
-                      alpha: 0.15,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.5),
-                      width: 2,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      // Session time
-                      Text(
-                        DateTimeUtils.formatDuration(
-                          sessionTotalTime,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'monospace',
-                          color: AppTheme.primaryColor,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      if (currentTimer != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          currentTimer.projectName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Check-In / Check-Out Card
+                // Attendance Time Display (Read-Only)
                 Builder(
                   builder: (context) {
                     final attendance = ref.watch(currentAttendanceProvider);
                     final isAttendanceLoading = ref.watch(isAttendanceLoadingProvider);
-                    // isCurrentlyCheckedIn: odd intervals = checked in, even intervals = checked out
+                    final liveDuration = ref.watch(liveAttendanceDurationProvider);
                     final isCurrentlyCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
-                    // isCurrentlyCheckedOut: has checked in before but not in active session
-                    final isCurrentlyCheckedOut = (attendance?.hasCheckedIn ?? false) && !isCurrentlyCheckedIn;
+
+                    // Format duration parts
+                    final hours = liveDuration.inHours;
+                    final minutes = liveDuration.inMinutes.remainder(60);
+                    final seconds = liveDuration.inSeconds.remainder(60);
+                    final timeColor = isCurrentlyCheckedIn ? AppTheme.primaryColor : AppTheme.textPrimary;
 
                     return Container(
                       padding: const EdgeInsets.all(12),
@@ -694,116 +562,169 @@ class _DashboardScreenState
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppTheme.borderColor),
                       ),
-                      child: Row(
+                      child: Column(
                         children: [
-                          // Check-In section
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Check-In',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  attendance?.formattedCheckIn ?? '--',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: isCurrentlyCheckedIn
-                                        ? AppTheme.successColor
-                                        : AppTheme.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: isAttendanceLoading || isCurrentlyCheckedIn
-                                        ? null
-                                        : _handleCheckIn,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: isCurrentlyCheckedIn
-                                          ? AppTheme.successColor.withValues(alpha: 0.2)
-                                          : AppTheme.successColor,
-                                      foregroundColor: isCurrentlyCheckedIn
-                                          ? AppTheme.successColor
-                                          : Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      isCurrentlyCheckedIn ? 'Checked In' : 'Check In',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Divider
+                          // Total Worked Time (Live Counter) - on top
                           Container(
-                            width: 1,
-                            height: 70,
-                            color: AppTheme.borderColor,
-                          ),
-                          const SizedBox(width: 12),
-                          // Check-Out section
-                          Expanded(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Check-Out',
+                                  'Total Worked Today',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: AppTheme.textSecondary,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  attendance?.formattedCheckOut ?? '--',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: isCurrentlyCheckedOut
-                                        ? AppTheme.primaryColor
-                                        : AppTheme.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: isAttendanceLoading || !isCurrentlyCheckedIn
-                                        ? null
-                                        : _handleCheckOut,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: isCurrentlyCheckedIn
-                                          ? AppTheme.primaryColor
-                                          : AppTheme.borderColor,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
+                                if (isAttendanceLoading)
+                                  const SizedBox(
+                                    height: 28,
+                                    width: 28,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                else
+                                  RichText(
+                                    text: TextSpan(
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.bold,
+                                        color: timeColor,
                                       ),
-                                    ),
-                                    child: const Text(
-                                      'Check Out',
-                                      style: TextStyle(fontSize: 12),
+                                      children: [
+                                        // Hours and minutes - large
+                                        TextSpan(
+                                          text: '${hours}h ${minutes.toString().padLeft(2, '0')}m ',
+                                          style: const TextStyle(fontSize: 24),
+                                        ),
+                                        // Seconds - smaller
+                                        TextSpan(
+                                          text: '${seconds.toString().padLeft(2, '0')}s',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: timeColor.withValues(alpha: 0.7),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
+                          const Divider(height: 1, color: AppTheme.borderColor),
+                          const SizedBox(height: 8),
+                          // Check-In / Check-Out Times Row
+                          Row(
+                            children: [
+                              // Check-In Time
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.login,
+                                          size: 14,
+                                          color: const Color(0xFF07AA5E),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Check-In',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      attendance?.formattedCheckIn ?? '--',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: isCurrentlyCheckedIn
+                                            ? const Color(0xFF07AA5E)
+                                            : AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Divider
+                              Container(
+                                width: 1,
+                                height: 40,
+                                color: AppTheme.borderColor,
+                              ),
+                              // Check-Out Time
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.logout,
+                                          size: 14,
+                                          color: const Color(0xFFF97316),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Check-Out',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      attendance?.formattedCheckOut ?? '--',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: (attendance?.hasCheckedOut ?? false)
+                                            ? const Color(0xFFF97316)
+                                            : AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Mobile check-in message when not checked in
+                          if (!isCurrentlyCheckedIn && !isAttendanceLoading) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: AppTheme.warningColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.phone_android,
+                                    size: 14,
+                                    color: AppTheme.warningColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Please check in from mobile app to start working',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.warningColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     );
@@ -969,443 +890,73 @@ class _DashboardScreenState
                         padding: EdgeInsets.zero,
                         itemCount: filteredProjects.length,
                         itemBuilder: (context, index) {
-                          final project =
-                              filteredProjects[index];
-                          final isActive =
-                              currentTimer?.projectId ==
-                              project.id;
-                          final projectTasks = ref.watch(
-                            projectTasksProvider(
-                              project.id,
-                            ),
-                          );
-                          final isTaskEntryExpanded =
-                              _expandedTaskEntryProjectId ==
-                              project.id;
+                          final project = filteredProjects[index];
+                          final isActive = currentTimer?.projectId == project.id;
+                          final projectTasks = ref.watch(projectTasksProvider(project.id));
 
-                          final isHovered =
-                              _hoveredProjectId ==
-                              project.id;
+                          // Calculate display time
+                          final completedTime = completedDurations[project.id] ?? Duration.zero;
+                          final Duration displayTime;
+                          if (isActive && currentTimer != null) {
+                            displayTime = currentTimer.elapsedDuration + completedTime;
+                          } else {
+                            displayTime = completedTime;
+                          }
 
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Project card with hover animation
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final availableWidth =
-                                      constraints.maxWidth;
-                                  return MouseRegion(
-                                    onEnter: (_) => setState(
-                                      () =>
-                                          _hoveredProjectId =
-                                              project.id,
-                                    ),
-                                    onExit: (_) => setState(
-                                      () =>
-                                          _hoveredProjectId =
-                                              null,
-                                    ),
-                                    child: Container(
-                                      margin:
-                                          const EdgeInsets.only(
-                                            bottom: 6,
-                                          ),
-                                      child: Row(
-                                        children: [
-                                          // Project card - shrinks to 70% on hover
-                                          Flexible(
-                                            child: AnimatedContainer(
-                                              duration:
-                                                const Duration(
-                                                  milliseconds:
-                                                      200,
-                                                ),
-                                            curve: Curves
-                                                .easeOutCubic,
-                                            width: (isHovered && !isActive)
-                                                ? availableWidth *
-                                                      0.7
-                                                : availableWidth,
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  isActive
-                                                  ? AppTheme
-                                                        .successColor
-                                                        .withValues(
-                                                          alpha: 0.15,
-                                                        )
-                                                  : AppTheme
-                                                        .surfaceColor,
-                                              borderRadius:
-                                                  BorderRadius.circular(
-                                                    8,
-                                                  ),
-                                              border:
-                                                  isActive
-                                                  ? Border.all(
-                                                      color: AppTheme.successColor.withValues(
-                                                        alpha:
-                                                            0.5,
-                                                      ),
-                                                      width: 1.5,
-                                                    )
-                                                  : Border.all(
-                                                      color: AppTheme.borderColor,
-                                                    ),
-                                            ),
-                                            child: Tooltip(
-                                              message:
-                                                  'View Tasks',
-                                              child: InkWell(
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      8,
-                                                    ),
-                                                onTap: () {
-                                                  // Toggle task expansion
-                                                  setState(() {
-                                                    if (isTaskEntryExpanded) {
-                                                      _expandedTaskEntryProjectId =
-                                                          null;
-                                                    } else {
-                                                      _expandedTaskEntryProjectId =
-                                                          project.id;
-                                                    }
-                                                  });
-                                                },
-                                                child: Padding(
-                                                  padding: const EdgeInsets.symmetric(
-                                                    horizontal:
-                                                        12,
-                                                    vertical:
-                                                        10,
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      // Active indicator
-                                                      if (isActive)
-                                                        Container(
-                                                          margin: const EdgeInsets.only(
-                                                            right: 8,
-                                                          ),
-                                                          width: 6,
-                                                          height: 6,
-                                                          decoration: const BoxDecoration(
-                                                            color: AppTheme.successColor,
-                                                            shape: BoxShape.circle,
-                                                          ),
-                                                        ),
-                                                      // Project name with task count
-                                                      Expanded(
-                                                        child: Text(
-                                                          projectTasks.length >
-                                                                  0
-                                                              ? '${project.name} (${projectTasks.length})'
-                                                              : project.name,
-                                                          style: TextStyle(
-                                                            fontSize: 13,
-                                                            color: isActive
-                                                                ? AppTheme.successColor
-                                                                : AppTheme.textPrimary,
-                                                            fontWeight: isActive
-                                                                ? FontWeight.w600
-                                                                : FontWeight.normal,
-                                                          ),
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                      // Time for this project (today's time)
-                                                      Builder(
-                                                        builder: (context) {
-                                                          final completedDurations = ref.watch(completedProjectDurationsProvider);
-                                                          final completedTime = completedDurations[project.id] ?? Duration.zero;
+                          return ProjectListCard(
+                            project: project,
+                            isActive: isActive,
+                            displayTime: displayTime,
+                            tasks: projectTasks,
+                            isLoading: _isLoading,
+                            onStartTimer: () async {
+                              if (isActive || _isLoading) return;
 
-                                                          final Duration displayTime;
-                                                          if (isActive && currentTimer != null) {
-                                                            displayTime = currentTimer.elapsedDuration + completedTime;
-                                                          } else {
-                                                            displayTime = completedTime;
-                                                          }
+                              // Check if user is checked in from mobile app
+                              final attendance = ref.read(currentAttendanceProvider);
+                              final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
 
-                                                          if (displayTime.inSeconds <= 0) {
-                                                            return const SizedBox.shrink();
-                                                          }
+                              if (!isCheckedIn) {
+                                await context.showAlertDialog(
+                                  title: 'Check In Required',
+                                  content: 'Please check in from the mobile app first to start working on projects.',
+                                  confirmText: 'OK',
+                                );
+                                return;
+                              }
 
-                                                          return Padding(
-                                                            padding: const EdgeInsets.only(right: 8),
-                                                            child: Text(
-                                                              DateTimeUtils.formatDuration(displayTime),
-                                                              style: TextStyle(
-                                                                color: isActive
-                                                                    ? AppTheme.successColor
-                                                                    : AppTheme.textSecondary,
-                                                                fontSize: 11,
-                                                                fontFamily: 'monospace',
-                                                                fontWeight: isActive
-                                                                    ? FontWeight.w600
-                                                                    : FontWeight.normal,
-                                                              ),
-                                                            ),
-                                                          );
-                                                        },
-                                                      ),
-                                                      // Expand arrow indicator
-                                                      Icon(
-                                                        isTaskEntryExpanded
-                                                            ? Icons.keyboard_arrow_up
-                                                            : Icons.keyboard_arrow_down,
-                                                        size: 20,
-                                                        color: AppTheme.textSecondary,
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          ),
-                                          // Green "Start Timer" button - slides in from right
-                                          Tooltip(
-                                            message:
-                                                isActive
-                                                ? 'Active'
-                                                : 'Start Timer',
-                                            child: AnimatedContainer(
-                                              duration:
-                                                  const Duration(
-                                                    milliseconds:
-                                                        200,
-                                                  ),
-                                              curve: Curves
-                                                  .easeOutCubic,
-                                              width:
-                                                  (isHovered && !isActive)
-                                                  ? availableWidth *
-                                                            0.3 -
-                                                        6
-                                                  : 0,
-                                              height: 42,
-                                              margin: EdgeInsets.only(
-                                                left:
-                                                    (isHovered && !isActive)
-                                                    ? 6
-                                                    : 0,
-                                              ),
-                                              clipBehavior:
-                                                  Clip.hardEdge,
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    const Color.fromARGB(
-                                                      255,
-                                                      52,
-                                                      135,
-                                                      55,
-                                                    ),
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      8,
-                                                    ),
-                                              ),
-                                              child: Material(
-                                                color: Colors
-                                                    .transparent,
-                                                child: InkWell(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        8,
-                                                      ),
-                                                  onTap: () async {
-                                                    if (isActive || _isLoading) {
-                                                      // Already active or loading
-                                                      return;
-                                                    }
+                              // If switching projects, show task submit dialog for current project
+                              if (currentTimer != null) {
+                                final shouldProceed = await _handleProjectSwitch(project);
+                                if (!shouldProceed) return;
+                              } else {
+                                final shouldProceed = await _handleProjectStart();
+                                if (!shouldProceed) return;
+                              }
 
-                                                    // If switching projects, show task submit dialog for current project
-                                                    if (currentTimer != null) {
-                                                      final shouldProceed = await _handleProjectSwitch(project);
-                                                      if (!shouldProceed) return;
-                                                    } else {
-                                                      // Starting fresh - check if there are existing time entries today
-                                                      // that need task submission (same logic as checkout)
-                                                      final shouldProceed = await _handleProjectStart();
-                                                      if (!shouldProceed) return;
-                                                    }
-
-                                                    setState(() => _isLoading = true);
-                                                    try {
-                                                      if (currentTimer != null) {
-                                                        // Switch project
-                                                        await ref
-                                                            .read(
-                                                              currentTimerProvider.notifier,
-                                                            )
-                                                            .switchProject(
-                                                              project,
-                                                            );
-                                                        if (mounted) {
-                                                          context.showSuccessSnackBar(
-                                                            'Switched to ${project.name}',
-                                                          );
-                                                        }
-                                                      } else {
-                                                        // Start timer
-                                                        await ref
-                                                            .read(
-                                                              currentTimerProvider.notifier,
-                                                            )
-                                                            .startTimer(
-                                                              project,
-                                                            );
-                                                        if (mounted) {
-                                                          context.showSuccessSnackBar(
-                                                            'Timer started',
-                                                          );
-                                                        }
-                                                      }
-                                                    } catch (e) {
-                                                      if (mounted) {
-                                                        context.showErrorSnackBar(
-                                                          'Error: ${e.toString().replaceFirst("Exception: ", "")}',
-                                                        );
-                                                      }
-                                                    } finally {
-                                                      if (mounted) {
-                                                        setState(() => _isLoading = false);
-                                                      }
-                                                    }
-                                                  },
-                                                  child: Center(
-                                                    child: Icon(
-                                                      isActive
-                                                          ? Icons.check
-                                                          : Icons.play_arrow,
-                                                      color:
-                                                          Colors.white,
-                                                      size:
-                                                          24,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              // Task chips and inline entry (only visible when expanded)
-                              AnimatedSize(
-                                duration: const Duration(
-                                  milliseconds: 200,
-                                ),
-                                curve: Curves.easeOutCubic,
-                                child: isTaskEntryExpanded
-                                    ? Padding(
-                                        padding:
-                                            const EdgeInsets.only(
-                                              left: 12,
-                                              right: 12,
-                                            ),
-                                        child: Builder(
-                                          builder: (context) {
-                                            // Watch task-specific duration UNCONDITIONALLY to ensure proper subscription
-                                            final currentTaskDuration = ref.watch(currentTaskDurationProvider);
-                                            return Column(
-                                              children: [
-                                                // Task chips
-                                                ...projectTasks.asMap().entries.map(
-                                                  (entry) {
-                                                    final index = entry.key;
-                                                    final task = entry.value;
-                                                    final isTaskActive = activeTaskId == task.id;
-                                                    return TaskChip(
-                                                      task: task,
-                                                      index: index + 1,
-                                                      isActive: isTaskActive,
-                                                      currentDuration: isTaskActive ? currentTaskDuration : null,
-                                                      onActivate: () async {
-                                                        if (_isLoading) return;
-                                                        setState(() => _isLoading = true);
-                                                        try {
-                                                          await ref
-                                                              .read(
-                                                                currentTimerProvider.notifier,
-                                                              )
-                                                              .startTimerWithTask(
-                                                                project,
-                                                                task.id,
-                                                              );
-                                                          if (mounted) {
-                                                            context.showSuccessSnackBar(
-                                                              'Started: ${task.taskName}',
-                                                            );
-                                                          }
-                                                        } catch (e) {
-                                                          if (mounted) {
-                                                            context.showErrorSnackBar(
-                                                              'Error: ${e.toString().replaceFirst("Exception: ", "")}',
-                                                            );
-                                                          }
-                                                        } finally {
-                                                          if (mounted) {
-                                                            setState(() => _isLoading = false);
-                                                          }
-                                                        }
-                                                      },
-                                                      onEdit: (newName) async {
-                                                        final updatedTask = task.copyWith(
-                                                          taskName: newName,
-                                                        );
-                                                        await ref
-                                                            .read(
-                                                              tasksProvider.notifier,
-                                                            )
-                                                            .updateTask(
-                                                              updatedTask,
-                                                            );
-                                                      },
-                                                      onDelete: () async {
-                                                        await ref
-                                                            .read(
-                                                              tasksProvider.notifier,
-                                                            )
-                                                            .deleteTask(
-                                                              task.id,
-                                                            );
-                                                      },
-                                                    );
-                                                  },
-                                                ),
-                                                // Inline task entry
-                                                InlineTaskEntry(
-                                                  projectId: project.id,
-                                                  onSubmit: (taskName) async {
-                                                    await ref
-                                                        .read(
-                                                          tasksProvider.notifier,
-                                                        )
-                                                        .createTask(
-                                                          projectId: project.id,
-                                                          taskName: taskName,
-                                                        );
-                                                    if (mounted) {
-                                                      context.showSuccessSnackBar(
-                                                        'Task added',
-                                                      );
-                                                    }
-                                                  },
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
+                              setState(() => _isLoading = true);
+                              try {
+                                if (currentTimer != null) {
+                                  await ref.read(currentTimerProvider.notifier).switchProject(project);
+                                  if (mounted) {
+                                    context.showSuccessSnackBar('Switched to ${project.name}');
+                                  }
+                                } else {
+                                  await ref.read(currentTimerProvider.notifier).startTimer(project);
+                                  if (mounted) {
+                                    context.showSuccessSnackBar('Timer started');
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  context.showErrorSnackBar('Error: ${e.toString().replaceFirst("Exception: ", "")}');
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _isLoading = false);
+                                }
+                              }
+                            },
                           );
                         },
                       );
@@ -1461,6 +1012,7 @@ class _DashboardScreenState
               ),
             ),
         ],
+        ),
       ),
     );
   }

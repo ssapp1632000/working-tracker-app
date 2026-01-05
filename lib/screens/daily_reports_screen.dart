@@ -28,8 +28,10 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
   // Filters
   DateTime? _fromDate;
   DateTime? _toDate;
-  bool _showFilters = false;
   String _activeFilter = 'all'; // all, today, week, month, custom
+
+  // Expansion state for reports
+  final Set<String> _expandedReports = {};
 
   @override
   void initState() {
@@ -159,35 +161,24 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
   }
 
   Future<void> _selectDateRange() async {
-    final picked = await showDateRangePicker(
+    final result = await showModalBottomSheet<DateTimeRange>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-      initialDateRange: _fromDate != null && _toDate != null
-          ? DateTimeRange(start: _fromDate!, end: _toDate!)
-          : DateTimeRange(
-              start: DateTime.now().subtract(const Duration(days: 7)),
-              end: DateTime.now(),
-            ),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryColor,
-              onPrimary: Color(0xFF121212),
-              surface: AppTheme.surfaceColor,
-              onSurface: AppTheme.textPrimary,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _DateRangePickerSheet(
+        initialRange: _fromDate != null && _toDate != null
+            ? DateTimeRange(start: _fromDate!, end: _toDate!.subtract(const Duration(days: 1)))
+            : DateTimeRange(
+                start: DateTime.now().subtract(const Duration(days: 7)),
+                end: DateTime.now(),
+              ),
+      ),
     );
 
-    if (picked != null) {
+    if (result != null) {
       setState(() {
-        _fromDate = picked.start;
-        _toDate = picked.end.add(const Duration(days: 1));
+        _fromDate = result.start;
+        _toDate = result.end.add(const Duration(days: 1));
         _activeFilter = 'custom';
       });
       _loadReports(refresh: true);
@@ -211,69 +202,125 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: const Color(0xFF121212),
       body: Stack(
         children: [
           Column(
             children: [
-              // Custom Header with gradient
+              // Header
               Container(
-                padding: const EdgeInsets.fromLTRB(12, 40, 12, 12),
                 decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                ),
-                child: Row(
-                  children: [
-                    // Back button
-                    IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                      onPressed: () => Navigator.of(context).pop(),
-                      tooltip: 'Back',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                  color: Color(0xFF1E1E1E),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Color(0xFF333333),
+                      width: 1,
                     ),
-                    const SizedBox(width: 8),
-                    // Title
-                    const Expanded(
-                      child: Text(
-                        'My Reports',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title row - with extra right padding for window controls
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 40, 60, 0),
+                      child: Row(
+                        children: [
+                          // Back button
+                          GestureDetector(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.arrow_back,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'MY REPORTS',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Filter chips - full width with smaller padding
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                      child: Row(
+                        children: [
+                          Expanded(child: _buildFilterChip('All', 'all')),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildFilterChip('Today', 'today')),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildFilterChip('Week', 'week')),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildFilterChip('Month', 'month')),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildDateRangeButton()),
+                        ],
+                      ),
+                    ),
+
+                    // Selected date range indicator
+                    if (_fromDate != null && _toDate != null && _activeFilter != 'all') ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.successColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.date_range,
+                                size: 14,
+                                color: AppTheme.successColor,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${_formatDateShort(_fromDate!)} - ${_formatDateShort(_toDate!.subtract(const Duration(days: 1)))}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.successColor,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _applyFilter('all'),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: AppTheme.successColor,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    // Filter toggle button
-                    IconButton(
-                      icon: Icon(
-                        _showFilters ? Icons.filter_list_off : Icons.filter_list,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _showFilters = !_showFilters;
-                        });
-                      },
-                      tooltip: 'Toggle Filters',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
+                    ],
                   ],
                 ),
-              ),
-
-              // Filter Section
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                height: _showFilters ? null : 0,
-                child: _showFilters ? _buildFilterSection() : const SizedBox.shrink(),
               ),
 
               // Content
@@ -293,108 +340,27 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
     );
   }
 
-  Widget _buildFilterSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Quick Filters
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip('All', 'all'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Today', 'today'),
-                const SizedBox(width: 8),
-                _buildFilterChip('This Week', 'week'),
-                const SizedBox(width: 8),
-                _buildFilterChip('This Month', 'month'),
-                const SizedBox(width: 8),
-                _buildDateRangeButton(),
-              ],
-            ),
-          ),
-
-          // Show selected date range
-          if (_fromDate != null || _toDate != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.date_range,
-                    size: 16,
-                    color: AppTheme.primaryColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _fromDate != null && _toDate != null
-                        ? '${_formatDateShort(_fromDate!)} - ${_formatDateShort(_toDate!.subtract(const Duration(days: 1)))}'
-                        : 'All time',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  if (_activeFilter != 'all') ...[
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => _applyFilter('all'),
-                      child: Icon(
-                        Icons.close,
-                        size: 16,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildFilterChip(String label, String filter) {
     final isActive = _activeFilter == filter;
     return GestureDetector(
       onTap: () => _applyFilter(filter),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primaryColor : AppTheme.backgroundColor,
+          color: isActive
+              ? AppTheme.successColor
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isActive ? AppTheme.primaryColor : AppTheme.borderColor,
-          ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-            color: isActive ? Colors.white : AppTheme.textSecondary,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              color: isActive ? Colors.white : Colors.white70,
+            ),
+            textAlign: TextAlign.center,
           ),
         ),
       ),
@@ -405,34 +371,38 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
     final isActive = _activeFilter == 'custom';
     return GestureDetector(
       onTap: _selectDateRange,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primaryColor : AppTheme.backgroundColor,
+          color: isActive
+              ? AppTheme.successColor
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isActive ? AppTheme.primaryColor : AppTheme.borderColor,
-          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.calendar_today,
-              size: 14,
-              color: isActive ? Colors.white : AppTheme.textSecondary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Custom',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                color: isActive ? Colors.white : AppTheme.textSecondary,
+        child: Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.calendar_today,
+                size: 12,
+                color: isActive ? Colors.white : Colors.white70,
               ),
-            ),
-          ],
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Custom',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                    color: isActive ? Colors.white : Colors.white70,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -440,9 +410,9 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
 
   Widget _buildContent() {
     if (_isLoading && _reports.isEmpty) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(
-          color: AppTheme.primaryColor,
+          color: AppTheme.successColor,
         ),
       );
     }
@@ -457,10 +427,10 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
 
     return RefreshIndicator(
       onRefresh: () => _loadReports(refresh: true),
-      color: AppTheme.primaryColor,
+      color: AppTheme.successColor,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         itemCount: _reports.length + (_hasMore ? 1 : 0),
         itemBuilder: (context, index) {
           if (index >= _reports.length) {
@@ -479,18 +449,26 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: AppTheme.errorColor,
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline,
+                size: 40,
+                color: AppTheme.errorColor,
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'Failed to load reports',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 8),
@@ -498,18 +476,34 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
               _error ?? 'Unknown error',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.5),
               ),
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => _loadReports(refresh: true),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
+            GestureDetector(
+              onTap: () => _loadReports(refresh: true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppTheme.successColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Retry',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -523,18 +517,26 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.description_outlined,
-            size: 64,
-            color: AppTheme.textHint,
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.description_outlined,
+              size: 40,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(
+          const SizedBox(height: 20),
+          const Text(
             'No reports found',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
@@ -544,8 +546,8 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
                 : 'Submit your first daily report to see it here',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondary,
+              fontSize: 13,
+              color: Colors.white.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -558,12 +560,12 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
         child: _isLoadingMore
-            ? const SizedBox(
+            ? SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppTheme.primaryColor,
+                  color: AppTheme.successColor,
                 ),
               )
             : const SizedBox.shrink(),
@@ -572,132 +574,196 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
   }
 
   Widget _buildReportCard(Map<String, dynamic> report) {
+    final reportId = report['_id']?.toString() ?? '';
     final reportDate = report['reportDate'] as String?;
     final tasks = (report['tasks'] as List?)
             ?.map((e) => e as Map<String, dynamic>)
             .toList() ??
         [];
-    final orientation = report['orientation'] as String? ?? 'l';
     final taskCount = report['taskCount'] ?? tasks.length;
+    final isExpanded = _expandedReports.contains(reportId);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF333333),
+          width: 1,
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Report Header
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  size: 18,
-                  color: Colors.white.withValues(alpha: 0.9),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _formatDate(reportDate),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+          // Report Header - tappable to expand
+          InkWell(
+            onTap: () {
+              setState(() {
+                if (isExpanded) {
+                  _expandedReports.remove(reportId);
+                } else {
+                  _expandedReports.add(reportId);
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  // Date icon
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppTheme.successColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.calendar_today,
+                      color: AppTheme.successColor,
+                      size: 22,
                     ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.task_alt,
-                        size: 14,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$taskCount task${taskCount != 1 ? 's' : ''}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.9),
+                  const SizedBox(width: 14),
+
+                  // Date and task count
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatDate(reportDate).toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    orientation.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'monospace',
-                      color: Colors.white,
+                        const SizedBox(height: 6),
+                        // Task count badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.successColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 14,
+                                color: AppTheme.successColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$taskCount task${taskCount != 1 ? 's' : ''}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.successColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+
+                  // Expand indicator
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: Colors.white.withValues(alpha: 0.5),
+                    size: 24,
+                  ),
+                ],
+              ),
             ),
           ),
 
-          // Tasks List
-          if (tasks.isNotEmpty)
-            ...tasks.asMap().entries.map((entry) {
-              final index = entry.key;
-              final task = entry.value;
-              final isLast = index == tasks.length - 1;
-              return _buildTaskItem(task, isLast);
-            }),
+          // Expanded task list
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            child: isExpanded
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(
+                          color: Color(0xFF333333),
+                          height: 1,
+                        ),
+                        const SizedBox(height: 12),
 
-          if (tasks.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'No tasks in this report',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.textSecondary,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
+                        // Tasks header
+                        Row(
+                          children: [
+                            const Text(
+                              'Tasks',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.successColor,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$taskCount',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Task items
+                        if (tasks.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              'No tasks in this report',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          )
+                        else
+                          ...tasks.map((task) => _buildTaskItem(task)),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTaskItem(Map<String, dynamic> task, bool isLast) {
+  Widget _buildTaskItem(Map<String, dynamic> task) {
     final project = task['project'] as Map<String, dynamic>?;
     final projectName = project?['name'] ?? 'Unknown Project';
     final title = task['title'] ?? '';
@@ -707,129 +773,153 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
             .toList() ??
         [];
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : Border(
-                bottom: BorderSide(
-                  color: AppTheme.borderColor,
-                  width: 1,
-                ),
-              ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Project & Title
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  projectName,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Project badge and title
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Bullet point
+                Container(
+                  margin: const EdgeInsets.only(top: 4, right: 10),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: AppTheme.successColor,
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // Description
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              description,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-                height: 1.4,
-              ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-
-          // Attachments
-          if (images.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 60,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: images.length,
-                itemBuilder: (context, index) {
-                  final image = images[index];
-                  final imageUrl = image['path'] as String? ?? '';
-                  return GestureDetector(
-                    onTap: () => _showImagePreview(imageUrl),
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      margin: EdgeInsets.only(right: index < images.length - 1 ? 8 : 0),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.borderColor),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(7),
-                        child: Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: AppTheme.backgroundColor,
-                              child: Icon(
-                                Icons.image_not_supported,
-                                size: 24,
-                                color: AppTheme.textHint,
-                              ),
-                            );
-                          },
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return Container(
-                              color: AppTheme.backgroundColor,
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Project badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7C6AFA).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          projectName.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF7C6AFA),
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                      const SizedBox(height: 8),
+
+                      // Task title
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+
+                      // Description
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          description,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.6),
+                            height: 1.4,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+
+                      // Attachments
+                      if (images.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 50,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: images.length,
+                            itemBuilder: (context, index) {
+                              final image = images[index];
+                              final imageUrl = image['path'] as String? ?? '';
+                              return GestureDetector(
+                                onTap: () => _showImagePreview(imageUrl),
+                                child: Container(
+                                  width: 50,
+                                  height: 50,
+                                  margin: EdgeInsets.only(
+                                    right: index < images.length - 1 ? 8 : 0,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFF333333),
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(7),
+                                    child: Image.network(
+                                      imageUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: const Color(0xFF2A2A2A),
+                                          child: Icon(
+                                            Icons.image_not_supported,
+                                            size: 20,
+                                            color: Colors.white.withValues(alpha: 0.3),
+                                          ),
+                                        );
+                                      },
+                                      loadingBuilder: (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
+                                        return Container(
+                                          color: const Color(0xFF2A2A2A),
+                                          child: Center(
+                                            child: SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppTheme.successColor,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -837,6 +927,7 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
   void _showImagePreview(String imageUrl) {
     showDialog(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.9),
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(16),
@@ -851,9 +942,9 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.all(32),
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor,
+                          color: const Color(0xFF1E1E1E),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
@@ -862,13 +953,13 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
                             Icon(
                               Icons.broken_image,
                               size: 48,
-                              color: AppTheme.textHint,
+                              color: Colors.white.withValues(alpha: 0.5),
                             ),
                             const SizedBox(height: 12),
                             Text(
                               'Failed to load image',
                               style: TextStyle(
-                                color: AppTheme.textSecondary,
+                                color: Colors.white.withValues(alpha: 0.7),
                               ),
                             ),
                           ],
@@ -885,15 +976,15 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
               child: GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
                 child: Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.close,
                     color: Colors.white,
-                    size: 24,
+                    size: 22,
                   ),
                 ),
               ),
@@ -902,5 +993,466 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
         ),
       ),
     );
+  }
+}
+
+/// Custom date range picker bottom sheet
+class _DateRangePickerSheet extends StatefulWidget {
+  final DateTimeRange initialRange;
+
+  const _DateRangePickerSheet({required this.initialRange});
+
+  @override
+  State<_DateRangePickerSheet> createState() => _DateRangePickerSheetState();
+}
+
+class _DateRangePickerSheetState extends State<_DateRangePickerSheet> {
+  late DateTime _startDate;
+  late DateTime _endDate;
+  late DateTime _displayMonth;
+  bool _selectingStart = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDate = widget.initialRange.start;
+    _endDate = widget.initialRange.end;
+    _displayMonth = DateTime(_startDate.year, _startDate.month);
+  }
+
+  void _previousMonth() {
+    setState(() {
+      _displayMonth = DateTime(_displayMonth.year, _displayMonth.month - 1);
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      _displayMonth = DateTime(_displayMonth.year, _displayMonth.month + 1);
+    });
+  }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      if (_selectingStart) {
+        _startDate = date;
+        if (_startDate.isAfter(_endDate)) {
+          _endDate = _startDate;
+        }
+        _selectingStart = false;
+      } else {
+        if (date.isBefore(_startDate)) {
+          _startDate = date;
+        } else {
+          _endDate = date;
+        }
+        _selectingStart = true;
+      }
+    });
+  }
+
+  bool _isInRange(DateTime date) {
+    return date.isAfter(_startDate.subtract(const Duration(days: 1))) &&
+        date.isBefore(_endDate.add(const Duration(days: 1)));
+  }
+
+  bool _isStartOrEnd(DateTime date) {
+    return _isSameDay(date, _startDate) || _isSameDay(date, _endDate);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _isToday(DateTime date) {
+    final now = DateTime.now();
+    return _isSameDay(date, now);
+  }
+
+  String _formatMonthYear(DateTime date) {
+    return DateFormat('MMMM yyyy').format(date);
+  }
+
+  String _formatDateShort(DateTime date) {
+    return DateFormat('MMM d, yyyy').format(date);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Text(
+                  'SELECT DATE RANGE',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Selected range display
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.successColor.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectingStart = true),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: _selectingStart
+                            ? AppTheme.successColor.withValues(alpha: 0.2)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Start Date',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDateShort(_startDate),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _selectingStart ? AppTheme.successColor : Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward,
+                  color: Colors.white.withValues(alpha: 0.5),
+                  size: 18,
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectingStart = false),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: !_selectingStart
+                            ? AppTheme.successColor.withValues(alpha: 0.2)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'End Date',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDateShort(_endDate),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: !_selectingStart ? AppTheme.successColor : Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Month navigation
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(
+                  onTap: _previousMonth,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_left,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+                Text(
+                  _formatMonthYear(_displayMonth),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _nextMonth,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Day headers
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                  .map((day) => SizedBox(
+                        width: 36,
+                        child: Text(
+                          day,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Calendar grid
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildCalendarGrid(),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Action buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).pop(
+                        DateTimeRange(start: _startDate, end: _endDate),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Apply',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarGrid() {
+    final firstDayOfMonth = DateTime(_displayMonth.year, _displayMonth.month, 1);
+    final lastDayOfMonth = DateTime(_displayMonth.year, _displayMonth.month + 1, 0);
+    final firstWeekday = firstDayOfMonth.weekday % 7; // Sunday = 0
+    final daysInMonth = lastDayOfMonth.day;
+
+    final today = DateTime.now();
+    final List<Widget> dayWidgets = [];
+
+    // Empty cells for days before month starts
+    for (int i = 0; i < firstWeekday; i++) {
+      dayWidgets.add(const SizedBox(width: 36, height: 36));
+    }
+
+    // Days of the month
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(_displayMonth.year, _displayMonth.month, day);
+      final isDisabled = date.isAfter(today.add(const Duration(days: 1)));
+      final isInRange = _isInRange(date);
+      final isStartOrEnd = _isStartOrEnd(date);
+      final isToday = _isToday(date);
+
+      dayWidgets.add(
+        GestureDetector(
+          onTap: isDisabled ? null : () => _selectDate(date),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isStartOrEnd
+                  ? AppTheme.successColor
+                  : isInRange
+                      ? AppTheme.successColor.withValues(alpha: 0.2)
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: isToday && !isStartOrEnd
+                  ? Border.all(color: AppTheme.successColor, width: 1.5)
+                  : null,
+            ),
+            child: Center(
+              child: Text(
+                '$day',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isStartOrEnd || isToday ? FontWeight.w600 : FontWeight.w400,
+                  color: isDisabled
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : isStartOrEnd
+                          ? Colors.white
+                          : Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Build rows
+    final List<Widget> rows = [];
+    for (int i = 0; i < dayWidgets.length; i += 7) {
+      final rowChildren = dayWidgets.sublist(
+        i,
+        (i + 7 > dayWidgets.length) ? dayWidgets.length : i + 7,
+      );
+      // Pad the last row if needed
+      while (rowChildren.length < 7) {
+        rowChildren.add(const SizedBox(width: 36, height: 36));
+      }
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: rowChildren,
+          ),
+        ),
+      );
+    }
+
+    return Column(children: rows);
   }
 }

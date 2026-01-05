@@ -34,6 +34,14 @@ class AppTheme {
         end: Alignment.bottomRight,
       );
 
+  // Background Image Decoration
+  static BoxDecoration get backgroundDecoration => const BoxDecoration(
+    image: DecorationImage(
+      image: AssetImage('assets/images/background.png'),
+      fit: BoxFit.cover,
+    ),
+  );
+
   // Main Theme - Dark Theme (matching mobile app)
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,

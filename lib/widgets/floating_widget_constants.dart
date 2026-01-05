@@ -21,10 +21,10 @@ class FloatingWidgetConstants {
   static const double baseHeight = 80.0;
 
   /// Maximum height for the project dropdown list
-  static const double maxDropdownHeight = 220.0;
+  static const double maxDropdownHeight = 300.0;
 
-  /// Height of each project item in the dropdown
-  static const double projectItemHeight = 55.0;
+  /// Height of each project item in the dropdown (collapsed state)
+  static const double projectItemHeight = 66.0;
 
   // ============================================================================
   // SPACING & PADDING

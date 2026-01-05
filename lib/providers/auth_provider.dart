@@ -75,49 +75,32 @@ class CurrentUserNotifier extends StateNotifier<User?> {
     }
   }
 
-  // Login with email and password
-  Future<User> login(String email, String password) async {
+  /// Step 1 of 2FA login: Initiate login with email and password
+  /// Returns loginSessionToken on success, throws on failure
+  Future<String> initiateLogin(String email, String password) async {
     try {
-      final user = await _authService.loginWithEmailPassword(email, password);
+      final token = await _authService.initiateLogin(email, password);
+      _logger.info('Login initiated, OTP sent to email');
+      return token;
+    } catch (e, stackTrace) {
+      _logger.error('Login initiation failed in provider', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Step 2 of 2FA login: Verify OTP and complete login
+  /// Returns User object on success, throws on failure
+  Future<User> verifyLoginOTP(String loginSessionToken, String otp) async {
+    try {
+      final user = await _authService.verifyLoginOTP(loginSessionToken, otp);
       state = user;
-      _logger.info('User logged in: ${user.email}');
+      _logger.info('User logged in via OTP: ${user.email}');
       return user;
-    } catch (e, stackTrace) {
-      _logger.error('Login failed in provider', e, stackTrace);
-      rethrow;
-    }
-  }
-
-  /*
-  // ============ OTP-based authentication (commented out) ============
-
-  // Send OTP to email
-  Future<bool> sendOTP(String email) async {
-    try {
-      return await _authService.sendOTP(email);
-    } catch (e, stackTrace) {
-      _logger.error('Send OTP failed in provider', e, stackTrace);
-      rethrow;
-    }
-  }
-
-  // Verify OTP and login
-  Future<bool> verifyOTP(String email, String otp) async {
-    try {
-      final user = await _authService.verifyOTPAndLogin(email, otp);
-      state = user;
-      if (user != null) {
-        _logger.info('User logged in via OTP: ${user.email}');
-      }
-      return user != null;
     } catch (e, stackTrace) {
       _logger.error('OTP verification failed in provider', e, stackTrace);
       rethrow;
     }
   }
-
-  // ============ End OTP-based authentication ============
-  */
 
   // Logout
   Future<void> logout() async {

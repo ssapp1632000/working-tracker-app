@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
@@ -28,15 +29,9 @@ class ApiService {
   // Track if we're currently refreshing to prevent multiple refresh attempts
   bool _isRefreshing = false;
 
-  // API Configuration
-  static const String baseUrl =
-      'https://api.ssapp.site/api/v1';
-
-  // Old API Configuration (commented out)
-  // static const String baseUrl =
-  //     'https://testreport.ssarchitects.ae/api/v1';
-  // static const String authToken =
-  //     'Bearer e985666576fc298350682a2f2f1a8093d022d740aa96f0a9b72785a134cc2c95';
+  // API Configuration - loaded from .env
+  static String get baseUrl =>
+      dotenv.env['API_BASE_URL'] ?? 'https://api.ssapp.site/api/v1';
 
   ApiService._internal();
 
@@ -772,6 +767,60 @@ class ApiService {
     } catch (e, stackTrace) {
       _logger.error('Error fetching my attendance', e, stackTrace);
       rethrow;
+    }
+  }
+
+  /// Get attendance status with periods (for live time display)
+  /// GET /attendance/status
+  /// Returns: isActive, today.attendance with periods array
+  Future<Map<String, dynamic>?> getAttendanceStatus() async {
+    try {
+      _logger.info('Fetching attendance status...');
+
+      final uri = Uri.parse('$baseUrl/attendance/status');
+      final response = await _makeRequest(method: 'GET', uri: uri);
+
+      _logger.info('Attendance status response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        _logger.info('Attendance status data: $data');
+
+        // Extract the attendance object from response
+        // Actual format: { success: true, isActive: bool, currentPeriod: {...}, today: { date, attendance: {...}, totalSecondsAccumulated } }
+        if (data['success'] == true) {
+          final isActive = data['isActive'] as bool? ?? false;
+          Map<String, dynamic>? attendance;
+
+          if (data['today'] != null && data['today']['attendance'] != null) {
+            attendance = Map<String, dynamic>.from(data['today']['attendance'] as Map<String, dynamic>);
+            // Add isActive to the attendance object for convenience
+            attendance['isActive'] = isActive;
+            // Use totalSecondsAccumulated from today level (includes current period elapsed)
+            if (data['today']['totalSecondsAccumulated'] != null) {
+              attendance['totalSeconds'] = data['today']['totalSecondsAccumulated'];
+            }
+            // Add day field from today.date if not present
+            if (attendance['day'] == null && data['today']['date'] != null) {
+              attendance['day'] = data['today']['date'];
+            }
+          }
+
+          _logger.info('Found attendance status: isActive=$isActive, attendance=$attendance');
+          return attendance;
+        }
+        return null;
+      } else if (response.statusCode == 404) {
+        _logger.info('No attendance status for today');
+        return null;
+      } else {
+        _logger.warning('Failed to fetch attendance status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching attendance status', e, stackTrace);
+      if (e is TokenExpiredException) rethrow;
+      return null;
     }
   }
 

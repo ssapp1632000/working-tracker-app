@@ -18,8 +18,8 @@ class ProjectWithTime {
   }) : submittedTasks = submittedTasks ?? [],
        pendingLocalTasks = pendingLocalTasks ?? [];
 
-  /// Whether this project has at least one task submitted (either already submitted or pending)
-  bool get hasTask => submittedTasks.isNotEmpty || pendingLocalTasks.every((t) => t.isSubmitted);
+  /// Whether this project has at least one task submitted (either already submitted or pending that was submitted)
+  bool get hasTask => submittedTasks.isNotEmpty || (pendingLocalTasks.isNotEmpty && pendingLocalTasks.every((t) => t.isSubmitted));
 
   /// Number of tasks submitted for this project
   int get taskCount => submittedTasks.length + pendingLocalTasks.where((t) => t.isSubmitted).length;

@@ -31,6 +31,9 @@ class Project extends HiveObject {
   @HiveField(8)
   final DateTime? lastActiveAt;
 
+  @HiveField(9)
+  final String? projectImage;
+
   Project({
     required this.id,
     required this.name,
@@ -41,6 +44,7 @@ class Project extends HiveObject {
     this.status = 'active',
     this.totalTime = Duration.zero,
     this.lastActiveAt,
+    this.projectImage,
   });
 
   // Copy with method for immutability
@@ -54,6 +58,7 @@ class Project extends HiveObject {
     String? status,
     Duration? totalTime,
     DateTime? lastActiveAt,
+    String? projectImage,
   }) {
     return Project(
       id: id ?? this.id,
@@ -65,6 +70,7 @@ class Project extends HiveObject {
       status: status ?? this.status,
       totalTime: totalTime ?? this.totalTime,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      projectImage: projectImage ?? this.projectImage,
     );
   }
 
@@ -80,6 +86,7 @@ class Project extends HiveObject {
       'status': status,
       'totalTime': totalTime.inSeconds,
       'lastActiveAt': lastActiveAt?.toIso8601String(),
+      'projectImage': projectImage,
     };
   }
 
@@ -161,6 +168,9 @@ class Project extends HiveObject {
       description = 'District: ${json['district']}';
     }
 
+    // Get project image URL
+    final projectImage = json['projectImage'] as String?;
+
     return Project(
       id: id,
       name: name,
@@ -171,6 +181,7 @@ class Project extends HiveObject {
       status: json['status'] as String? ?? 'active',
       totalTime: parsedTotalTime,
       lastActiveAt: parsedLastActiveAt,
+      projectImage: projectImage,
     );
   }
 

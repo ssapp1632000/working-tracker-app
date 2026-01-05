@@ -30,11 +30,12 @@ class AuthService {
 
   AuthService._internal();
 
-  /// Login with email and password via API
-  /// Returns User object on success, throws on failure
-  Future<User> loginWithEmailPassword(String email, String password) async {
+  /// Step 1 of 2FA login: Initiate login with email and password
+  /// Returns loginSessionToken on success, throws on failure
+  /// The OTP will be sent to the user's registered email
+  Future<String> initiateLogin(String email, String password) async {
     try {
-      _logger.info('Logging in with email: $email');
+      _logger.info('Initiating login with email: $email');
 
       // Validate email format
       if (email.isEmpty || !_isValidEmail(email)) {
@@ -59,9 +60,50 @@ class AuthService {
       final responseData = jsonDecode(response.body) as Map<String, dynamic>;
 
       if (response.statusCode == 200 && responseData['success'] == true) {
+        final loginSessionToken = responseData['loginSessionToken'] as String?;
+        if (loginSessionToken == null) {
+          throw Exception('Invalid response: missing login session token');
+        }
+        _logger.info('OTP sent to email for: $email');
+        return loginSessionToken;
+      } else {
+        final message = responseData['message'] ?? 'Login failed';
+        _logger.info('Login initiation failed for $email: $message');
+        throw Exception(message);
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Login initiation failed', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Step 2 of 2FA login: Verify OTP and complete login
+  /// Returns User object on success, throws on failure
+  Future<User> verifyLoginOTP(String loginSessionToken, String otp) async {
+    try {
+      _logger.info('Verifying login OTP...');
+
+      if (otp.isEmpty || otp.length != 6) {
+        throw Exception('Please enter a valid 6-digit OTP');
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/verify-login-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'loginSessionToken': loginSessionToken,
+          'otp': otp,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
         final user = User.fromLoginResponse(responseData);
         await _storage.saveUser(user);
-        _logger.info('Login successful for: $email');
+        _logger.info('Login successful');
 
         // Connect to Socket.IO for real-time updates
         try {
@@ -74,12 +116,12 @@ class AuthService {
 
         return user;
       } else {
-        final message = responseData['message'] ?? 'Login failed';
-        _logger.info('Login failed for $email: $message');
+        final message = responseData['message'] ?? 'OTP verification failed';
+        _logger.info('OTP verification failed: $message');
         throw Exception(message);
       }
     } catch (e, stackTrace) {
-      _logger.error('Login failed', e, stackTrace);
+      _logger.error('OTP verification failed', e, stackTrace);
       rethrow;
     }
   }

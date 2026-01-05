@@ -120,18 +120,8 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       _logger.info('API Response - openEntry: $openEntry');
       _logger.info('API Response - todayEntries count: ${todayEntries.length}');
 
-      // Check if there's NO open entry - clear everything and show empty state
-      if (openEntry == null) {
-        _logger.info('No open entry on server - clearing all durations and state');
-        _ref.read(completedProjectDurationsProvider.notifier).state = {};
-        state = null;
-        _ref.read(selectedProjectProvider.notifier).state = null;
-        await _startSocketEventListener();
-        return;
-      }
-
-      // Open entry exists - process only CLOSED entries for completedProjectDurations
-      // The active project's time is handled separately via currentTimer.elapsedDuration
+      // Process ALL completed entries (with endedAt) for completedProjectDurations
+      // This includes entries from earlier today, regardless of whether there's an open entry
       final Map<String, Duration> completedDurations = {};
       for (final entry in todayEntries) {
         // Only count completed entries (have endedAt)
@@ -145,16 +135,57 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
           }
 
           if (projectId != null) {
-            final duration = Duration(seconds: entry['duration'] as int? ?? 0);
-            completedDurations[projectId] = (completedDurations[projectId] ?? Duration.zero) + duration;
-            _logger.info('Added completed duration: $projectId -> ${duration.inSeconds}s');
+            // Try to get duration from the entry, or calculate it from timestamps
+            Duration duration;
+            if (entry['duration'] != null && entry['duration'] is int && entry['duration'] > 0) {
+              duration = Duration(seconds: entry['duration'] as int);
+            } else {
+              // Calculate duration from startedAt and endedAt
+              final startedAtField = entry['startedAt'];
+              final endedAtField = entry['endedAt'];
+              DateTime? startedAt;
+              DateTime? endedAt;
+
+              if (startedAtField is String) {
+                startedAt = DateTime.tryParse(startedAtField)?.toLocal();
+              } else if (startedAtField is DateTime) {
+                startedAt = startedAtField.toLocal();
+              }
+
+              if (endedAtField is String) {
+                endedAt = DateTime.tryParse(endedAtField)?.toLocal();
+              } else if (endedAtField is DateTime) {
+                endedAt = endedAtField.toLocal();
+              }
+
+              if (startedAt != null && endedAt != null) {
+                duration = endedAt.difference(startedAt);
+                if (duration.isNegative) duration = Duration.zero;
+              } else {
+                duration = Duration.zero;
+              }
+            }
+
+            if (duration.inSeconds > 0) {
+              completedDurations[projectId] = (completedDurations[projectId] ?? Duration.zero) + duration;
+              _logger.info('Added completed duration: $projectId -> ${duration.inSeconds}s (total: ${completedDurations[projectId]!.inSeconds}s)');
+            }
           }
         }
       }
 
-      // Update the completed durations provider (only closed entries)
+      // Update the completed durations provider (all closed entries from today)
       _ref.read(completedProjectDurationsProvider.notifier).state = completedDurations;
-      _logger.info('Loaded ${completedDurations.length} completed project durations for today (session active)');
+      _logger.info('Loaded ${completedDurations.length} completed project durations for today');
+
+      // Check if there's NO open entry - clear timer state but keep durations
+      if (openEntry == null) {
+        _logger.info('No open entry on server - clearing timer state (keeping completed durations)');
+        state = null;
+        _ref.read(selectedProjectProvider.notifier).state = null;
+        await _startSocketEventListener();
+        return;
+      }
 
       // Process the open entry to set active session
       {
@@ -244,7 +275,8 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       }
 
       // Reload attendance to keep it in sync with timer state
-      await _ref.read(attendanceProvider.notifier).loadTodayAttendance();
+      // Use loadAttendanceStatus() which returns periods data for live time display
+      await _ref.read(attendanceProvider.notifier).loadAttendanceStatus();
 
       // Start listening to socket events for real-time updates
       await _startSocketEventListener();
@@ -298,6 +330,9 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       // Also sync tasks from API for today
       await _ref.read(tasksProvider.notifier).syncTasksFromApi(DateTime.now());
 
+      // Also refresh attendance status to keep check-in/check-out times updated
+      await _ref.read(attendanceProvider.notifier).loadAttendanceStatus();
+
       _logger.info('State re-synced after socket event');
     } catch (e, stackTrace) {
       _logger.error('Failed to handle socket event', e, stackTrace);
@@ -312,11 +347,11 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
   // Start timer for project (calls API)
   Future<void> startTimer(Project project) async {
     try {
-      // Auto check-in only if no attendance record exists for today
+      // Validate that user is checked in from mobile app
       final attendance = _ref.read(currentAttendanceProvider);
-      if (attendance == null) {
-        _logger.info('No attendance record for today, auto checking in before starting timer...');
-        await _ref.read(attendanceProvider.notifier).recordBiometric();
+      final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+      if (!isCheckedIn) {
+        throw Exception('Please check in from mobile app first');
       }
 
       // If already running for another project, end it first
@@ -349,9 +384,6 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       _ref.read(selectedProjectProvider.notifier).state = project;
       _startUiRefreshTimer();
 
-      // Reload attendance - starting a timer may auto check-in the user
-      await _ref.read(attendanceProvider.notifier).loadTodayAttendance();
-
       _logger.info('Timer started for: ${project.name}');
     } catch (e, stackTrace) {
       _logger.error('Failed to start timer', e, stackTrace);
@@ -383,11 +415,11 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
         return;
       }
 
-      // Auto check-in only if no attendance record exists for today
+      // Validate that user is checked in from mobile app
       final attendance = _ref.read(currentAttendanceProvider);
-      if (attendance == null) {
-        _logger.info('No attendance record for today, auto checking in before starting timer with task...');
-        await _ref.read(attendanceProvider.notifier).recordBiometric();
+      final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+      if (!isCheckedIn) {
+        throw Exception('Please check in from mobile app first');
       }
 
       await saveCurrentTaskDuration();
@@ -415,9 +447,6 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
         );
         _ref.read(selectedProjectProvider.notifier).state = project;
         _startUiRefreshTimer();
-
-        // Reload attendance - starting a timer may auto check-in the user
-        await _ref.read(attendanceProvider.notifier).loadTodayAttendance();
       }
 
       _ref.read(activeTaskIdProvider.notifier).state = taskId;
@@ -458,6 +487,13 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
   // Switch project
   Future<void> switchProject(Project project) async {
     try {
+      // Validate that user is checked in from mobile app
+      final attendance = _ref.read(currentAttendanceProvider);
+      final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+      if (!isCheckedIn) {
+        throw Exception('Please check in from mobile app first');
+      }
+
       await saveCurrentTaskDuration();
 
       // End current project
@@ -487,6 +523,59 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
 
       _ref.read(activeTaskIdProvider.notifier).state = null;
       _ref.read(selectedProjectProvider.notifier).state = project;
+
+      // Refresh today's time entries from API to get accurate completed durations
+      final todayEntries = await _api.getTodayTimeEntries();
+      final Map<String, Duration> completedDurations = {};
+      for (final entry in todayEntries) {
+        if (entry['endedAt'] != null) {
+          final projectField = entry['project'];
+          String? projectId;
+          if (projectField is Map) {
+            projectId = projectField['_id']?.toString();
+          } else {
+            projectId = projectField?.toString();
+          }
+          if (projectId != null) {
+            // Try to get duration from the entry, or calculate it from timestamps
+            Duration duration;
+            if (entry['duration'] != null && entry['duration'] is int && entry['duration'] > 0) {
+              duration = Duration(seconds: entry['duration'] as int);
+            } else {
+              // Calculate duration from startedAt and endedAt
+              final startedAtField = entry['startedAt'];
+              final endedAtField = entry['endedAt'];
+              DateTime? startedAt;
+              DateTime? endedAt;
+
+              if (startedAtField is String) {
+                startedAt = DateTime.tryParse(startedAtField)?.toLocal();
+              } else if (startedAtField is DateTime) {
+                startedAt = startedAtField.toLocal();
+              }
+
+              if (endedAtField is String) {
+                endedAt = DateTime.tryParse(endedAtField)?.toLocal();
+              } else if (endedAtField is DateTime) {
+                endedAt = endedAtField.toLocal();
+              }
+
+              if (startedAt != null && endedAt != null) {
+                duration = endedAt.difference(startedAt);
+                if (duration.isNegative) duration = Duration.zero;
+              } else {
+                duration = Duration.zero;
+              }
+            }
+
+            if (duration.inSeconds > 0) {
+              completedDurations[projectId] = (completedDurations[projectId] ?? Duration.zero) + duration;
+            }
+          }
+        }
+      }
+      _ref.read(completedProjectDurationsProvider.notifier).state = completedDurations;
+      _logger.info('Refreshed completed durations after switch: ${completedDurations.length} projects');
 
       await _ref.read(projectsProvider.notifier).refreshProjects();
 

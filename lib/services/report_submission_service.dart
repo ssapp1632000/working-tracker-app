@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/task_submission.dart';
 import 'logger_service.dart';
@@ -19,8 +20,9 @@ class ReportSubmissionService {
   static const String _oldApiUrl = 'https://testreport.ssarchitects.ae/api/v1/submit_report.php';
   static const String _oldAuthToken = 'e985666576fc298350682a2f2f1a8093d022d740aa96f0a9b72785a134cc2c95';
 
-  // New API Configuration
-  static const String _newApiUrl = 'https://api.ssapp.site/api/v1/reports/daily-reports';
+  // New API Configuration - loaded from .env
+  static String get _newApiUrl =>
+      '${dotenv.env['API_BASE_URL'] ?? 'https://api.ssapp.site/api/v1'}/reports/daily-reports';
 
   ReportSubmissionService._internal();
 

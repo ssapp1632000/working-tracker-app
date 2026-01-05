@@ -7,7 +7,6 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
-import '../core/extensions/context_extensions.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/task_provider.dart';
@@ -17,8 +16,7 @@ import '../providers/navigation_provider.dart';
 import '../services/click_through_service.dart';
 import '../models/project_with_time.dart';
 import 'floating_widget_constants.dart';
-import 'inline_task_entry.dart';
-import 'task_chip.dart';
+import 'floating_project_item.dart';
 
 /// A floating widget that displays project timer information
 ///
@@ -58,12 +56,6 @@ class _FloatingWidgetState
   final TextEditingController _searchController =
       TextEditingController();
 
-  /// Which project has the task entry expanded
-  String? _expandedTaskEntryProjectId;
-
-  /// Which project is currently being hovered (for animation)
-  String? _hoveredProjectId;
-
   /// Current horizontal slide offset for the widget animation
   double _currentSlideOffset =
       FloatingWidgetConstants.slideOutOffset;
@@ -101,7 +93,8 @@ class _FloatingWidgetState
     final attendanceState = ref.read(attendanceProvider);
     // Only load if not already loaded (AttendanceInitial state)
     if (attendanceState is AttendanceInitial) {
-      await ref.read(attendanceProvider.notifier).loadTodayAttendance();
+      // Use loadAttendanceStatus() which returns periods data for live time display
+      await ref.read(attendanceProvider.notifier).loadAttendanceStatus();
     }
   }
 
@@ -136,7 +129,7 @@ class _FloatingWidgetState
   /// Preserves vertical position while snapping horizontally to right edge
   Future<void> _checkAndSnapToRightEdge() async {
     // IMPORTANT: Only snap in floating mode (60-280px wide window)
-    // Don't snap the 380x580 dashboard window!
+    // Don't snap the 420x680 dashboard window!
     // Always allow vertical dragging, only snap horizontal position
 
     try {
@@ -329,6 +322,19 @@ class _FloatingWidgetState
     dynamic currentTimer,
     int projectCount,
   ) async {
+    // Check if user is checked in from mobile app
+    final attendance = ref.read(currentAttendanceProvider);
+    final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+
+    if (!isCheckedIn) {
+      // Show mobile check-in required message via tooltip or switch to main
+      // Since we can't show dialogs easily in floating mode, switch to main
+      ref.read(returnToFloatingProvider.notifier).state = true;
+      await ref.read(windowModeProvider.notifier).switchToMain();
+      // Dashboard will show the check-in required dialog when user tries to start
+      return;
+    }
+
     if (isActive) {
       // Do nothing if clicking on active project - keep timer running
       // Just close the dropdown
@@ -732,7 +738,7 @@ class _FloatingWidgetState
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Icon - always visible (left)
-            _buildProjectIcon(),
+            _buildProjectIcon(currentProject, currentTimer),
             SizedBox(
               width:
                   FloatingWidgetConstants.iconTextSpacing,
@@ -748,8 +754,8 @@ class _FloatingWidgetState
               ),
             ),
 
-            // Check-In/Check-Out buttons stacked vertically
-            _buildCheckInOutButtons(),
+            // Attendance status indicator (read-only)
+            _buildAttendanceStatusIndicator(),
             const SizedBox(width: 4),
             _buildDropdownArrow(projects),
             _buildMaximizeButton(),
@@ -759,12 +765,55 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds the project icon
-  Widget _buildProjectIcon() {
-    return const Icon(
-      Icons.apartment,
-      color: AppTheme.primaryColor,
-      size: FloatingWidgetConstants.expandedIconSize,
+  /// Builds the project icon/image for the main row
+  Widget _buildProjectIcon(dynamic currentProject, dynamic currentTimer) {
+    // Get project image from currentProject or find it from projects list
+    String? projectImage;
+    if (currentProject?.projectImage != null) {
+      projectImage = currentProject.projectImage;
+    } else if (currentTimer != null) {
+      // Try to find project in projects list to get image
+      final projects = ref.read(projectsProvider).valueOrNull ?? [];
+      final project = projects.where((p) => p.id == currentTimer.projectId).firstOrNull;
+      projectImage = project?.projectImage;
+    }
+
+    return Container(
+      width: FloatingWidgetConstants.expandedIconSize,
+      height: FloatingWidgetConstants.expandedIconSize,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.5),
+          width: 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: projectImage != null && projectImage.isNotEmpty
+            ? Image.network(
+                projectImage,
+                width: FloatingWidgetConstants.expandedIconSize,
+                height: FloatingWidgetConstants.expandedIconSize,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildProjectIconFallback(),
+              )
+            : _buildProjectIconFallback(),
+      ),
+    );
+  }
+
+  /// Fallback icon when no project image
+  Widget _buildProjectIconFallback() {
+    return Container(
+      color: AppTheme.primaryColor.withValues(alpha: 0.1),
+      child: const Center(
+        child: Icon(
+          Icons.apartment,
+          color: AppTheme.primaryColor,
+          size: 16,
+        ),
+      ),
     );
   }
 
@@ -832,84 +881,29 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds the Check-In and Check-Out buttons stacked vertically
-  Widget _buildCheckInOutButtons() {
+  /// Builds an attendance status indicator (read-only)
+  Widget _buildAttendanceStatusIndicator() {
     final attendance = ref.watch(currentAttendanceProvider);
-    final isAttendanceLoading = ref.watch(isAttendanceLoadingProvider);
+    final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
 
-    // isCurrentlyCheckedIn: odd intervals = checked in, even intervals = checked out
-    final isCurrentlyCheckedIn = attendance?.isCurrentlyCheckedIn == true;
-
-    // Check-in should be disabled if:
-    // 1. Attendance is loading
-    // 2. Currently in a checked-in session (odd intervals)
-    final canCheckIn = !isAttendanceLoading && !isCurrentlyCheckedIn;
-
-    // Check-out should be enabled only when:
-    // 1. Attendance is not loading
-    // 2. Currently in a checked-in session (odd intervals)
-    final canCheckOut = !isAttendanceLoading && isCurrentlyCheckedIn;
-
-    // For UI display: hasCheckedIn means user has checked in at least once today
-    final hasCheckedInToday = attendance?.hasCheckedIn == true;
-    // Currently checked out = not in active session but has checked in before
-    final isCurrentlyCheckedOut = hasCheckedInToday && !isCurrentlyCheckedIn;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Check-In button with tooltip to the left
-        // Gray when disabled (already checked in), blue when can check in
-        _buildTooltipLeft(
-          message: isCurrentlyCheckedIn
-              ? 'Already checked in'
-              : 'Check In',
-          child: InkWell(
-            onTap: canCheckIn ? _handleCheckIn : null,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: canCheckIn
-                    ? AppTheme.primaryColor.withValues(alpha: 0.1)
-                    : AppTheme.textHint.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Icon(
-                Icons.login,
-                size: 14,
-                color: canCheckIn ? AppTheme.primaryColor : AppTheme.textHint,
-              ),
-            ),
-          ),
+    return _buildTooltipLeft(
+      message: isCheckedIn
+          ? 'Checked in at ${attendance?.formattedCheckIn ?? '--'}'
+          : 'Not checked in - use mobile app',
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: isCheckedIn
+              ? const Color(0xFF07AA5E).withValues(alpha: 0.1)
+              : AppTheme.textHint.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(4),
         ),
-        const SizedBox(height: 4),
-        // Check-Out button with tooltip to the left
-        // Gray when disabled (not checked in), orange when can check out
-        _buildTooltipLeft(
-          message: isCurrentlyCheckedOut
-              ? 'Checked out at ${attendance?.formattedCheckOut ?? '--'}'
-              : (canCheckOut ? 'Check Out' : 'Check in first'),
-          child: InkWell(
-            onTap: canCheckOut ? _handleCheckOut : null,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: canCheckOut
-                    ? AppTheme.warningColor.withValues(alpha: 0.1)
-                    : AppTheme.textHint.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Icon(
-                Icons.logout,
-                size: 14,
-                color: canCheckOut ? AppTheme.warningColor : AppTheme.textHint,
-              ),
-            ),
-          ),
+        child: Icon(
+          isCheckedIn ? Icons.check_circle : Icons.radio_button_unchecked,
+          size: 16,
+          color: isCheckedIn ? const Color(0xFF07AA5E) : AppTheme.textHint,
         ),
-      ],
+      ),
     );
   }
 
@@ -930,60 +924,6 @@ class _FloatingWidgetState
       ),
       child: child,
     );
-  }
-
-  /// Handle check-in action
-  Future<void> _handleCheckIn() async {
-    final attendance = ref.read(currentAttendanceProvider);
-
-    // Already in an active checked-in session (odd intervals)
-    if (attendance?.isCurrentlyCheckedIn == true) {
-      context.showSnackBar(
-        'Already checked in at ${attendance!.formattedCheckIn}',
-      );
-      return;
-    }
-
-    // Confirm check-in
-    final confirmed = await context.showAlertDialog(
-      title: 'Check In',
-      content: 'Would you like to check in for today?',
-      confirmText: 'Check In',
-      cancelText: 'Later',
-    );
-
-    if (confirmed == true) {
-      try {
-        final success = await ref.read(attendanceProvider.notifier).recordBiometric();
-        if (success && mounted) {
-          context.showSuccessSnackBar('Checked in successfully');
-        }
-      } catch (e) {
-        if (mounted) {
-          context.showErrorSnackBar('Failed to check in: $e');
-        }
-      }
-    }
-  }
-
-  /// Handle check-out action
-  /// Flow: Set navigation request → Switch to main screen → Dashboard handles dialog and checkout
-  Future<void> _handleCheckOut() async {
-    final attendance = ref.read(currentAttendanceProvider);
-
-    // Must be in an active checked-in session (odd intervals)
-    if (attendance?.isCurrentlyCheckedIn != true) {
-      return;
-    }
-
-    // Mark that we should return to floating after checkout
-    ref.read(returnToFloatingProvider.notifier).state = true;
-
-    // Request navigation to checkout dialog
-    ref.read(navigationRequestProvider.notifier).requestCheckout();
-
-    // Switch to main mode - dashboard will handle showing the dialog
-    await ref.read(windowModeProvider.notifier).switchToMain();
   }
 
   /// Builds the switch projects button
@@ -1060,13 +1000,39 @@ class _FloatingWidgetState
             child: filteredProjects.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     itemCount: filteredProjects.length,
                     itemBuilder: (context, index) {
-                      return _buildProjectListItem(
-                        filteredProjects[index],
-                        currentTimer,
-                        projects.length,
+                      final project = filteredProjects[index];
+                      final isActive = currentTimer?.projectId == project.id;
+                      final projectTasks = ref.watch(projectTasksProvider(project.id));
+                      final completedDurations = ref.watch(completedProjectDurationsProvider);
+                      final completedTime = completedDurations[project.id] ?? Duration.zero;
+
+                      final Duration displayTime;
+                      if (isActive && currentTimer != null) {
+                        displayTime = currentTimer.elapsedDuration + completedTime;
+                      } else {
+                        displayTime = completedTime;
+                      }
+
+                      return FloatingProjectItem(
+                        project: project,
+                        isActive: isActive,
+                        tasks: projectTasks,
+                        displayTime: displayTime,
+                        onTap: () => _onProjectTap(
+                          project,
+                          isActive,
+                          currentTimer,
+                          projects.length,
+                        ),
+                        onStartTimer: () => _onProjectTap(
+                          project,
+                          isActive,
+                          currentTimer,
+                          projects.length,
+                        ),
                       );
                     },
                   ),
@@ -1171,314 +1137,4 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds a single project item in the dropdown list
-  Widget _buildProjectListItem(
-    dynamic project,
-    dynamic currentTimer,
-    int projectCount,
-  ) {
-    // Check if this project's timer is currently active
-    final isActive = currentTimer?.projectId == project.id;
-    final projectTasks = ref.watch(
-      projectTasksProvider(project.id),
-    );
-    final isTaskEntryExpanded =
-        _expandedTaskEntryProjectId == project.id;
-    final isHovered = _hoveredProjectId == project.id;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Project row with hover animation
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final availableWidth = constraints.maxWidth;
-            return MouseRegion(
-              onEnter: (_) => setState(
-                () => _hoveredProjectId = project.id,
-              ),
-              onExit: (_) =>
-                  setState(() => _hoveredProjectId = null),
-              child: Container(
-                height: FloatingWidgetConstants
-                    .projectItemHeight,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: FloatingWidgetConstants
-                      .dropdownItemHorizontalPadding,
-                  vertical: FloatingWidgetConstants
-                      .dropdownItemVerticalPadding,
-                ),
-                child: Row(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    // Project card - shrinks to 70% on hover (for non-active projects)
-                    AnimatedContainer(
-                      duration: const Duration(
-                        milliseconds: 200,
-                      ),
-                      curve: Curves.easeOutCubic,
-                      width: (isHovered && !isActive)
-                          ? (availableWidth - 24) *
-                                0.7 // 24 = horizontal padding
-                          : availableWidth - 24,
-                      child: InkWell(
-                        onTap: () {
-                          // Toggle task expansion
-                          setState(() {
-                            if (isTaskEntryExpanded) {
-                              _expandedTaskEntryProjectId =
-                                  null;
-                            } else {
-                              _expandedTaskEntryProjectId =
-                                  project.id;
-                            }
-                          });
-                        },
-
-                        child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.center,
-                            children: [
-                              // Project icon
-                              Icon(
-                                Icons.apartment,
-                                size: FloatingWidgetConstants
-                                    .dropdownProjectIconSize,
-                                color: isActive
-                                    ? AppTheme.primaryColor
-                                    : AppTheme
-                                          .textSecondary,
-                              ),
-                              SizedBox(
-                                width:
-                                    FloatingWidgetConstants
-                                        .dropdownIconSpacing,
-                              ),
-
-                              // Project name with task count
-                              Expanded(
-                                child: Text(
-                                  projectTasks.isNotEmpty
-                                      ? '${project.name} (${projectTasks.length})'
-                                      : project.name,
-                                  style: TextStyle(
-                                    color: isActive
-                                        ? AppTheme
-                                              .primaryColor
-                                        : AppTheme
-                                              .textPrimary,
-                                    fontSize:
-                                        FloatingWidgetConstants
-                                            .dropdownProjectFontSize,
-                                    fontWeight: isActive
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                  ),
-                                  overflow:
-                                      TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              // Project time for today (current + completed)
-                              Builder(
-                                builder: (context) {
-                                  final completedDurations = ref.watch(completedProjectDurationsProvider);
-                                  final completedTime = completedDurations[project.id] ?? Duration.zero;
-                                  final currentTimer = ref.watch(currentTimerProvider);
-
-                                  final Duration displayTime;
-                                  if (isActive && currentTimer != null) {
-                                    // Active project - current elapsed + completed today
-                                    displayTime = currentTimer.elapsedDuration + completedTime;
-                                  } else {
-                                    // Inactive project - completed today only
-                                    displayTime = completedTime;
-                                  }
-
-                                  if (displayTime.inSeconds <= 0) {
-                                    return const SizedBox.shrink();
-                                  }
-
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 6),
-                                    child: Text(
-                                      DateTimeUtils.formatDuration(displayTime),
-                                      style: TextStyle(
-                                        color: isActive
-                                            ? AppTheme.primaryColor
-                                            : AppTheme.textSecondary,
-                                        fontSize: FloatingWidgetConstants.dropdownTimeFontSize,
-                                        fontFamily: 'monospace',
-                                        fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-
-                              // Active indicator dot (green circle)
-                              if (isActive)
-                                Container(
-                                  margin:
-                                      const EdgeInsets.only(
-                                        right: 6,
-                                      ),
-                                  width: FloatingWidgetConstants
-                                      .activeIndicatorSize,
-                                  height:
-                                      FloatingWidgetConstants
-                                          .activeIndicatorSize,
-                                  decoration:
-                                      const BoxDecoration(
-                                        color: AppTheme
-                                            .successColor,
-                                        shape:
-                                            BoxShape.circle,
-                                      ),
-                                ),
-
-                              // Expand arrow indicator
-                              Icon(
-                                isTaskEntryExpanded
-                                    ? Icons
-                                          .keyboard_arrow_up
-                                    : Icons
-                                          .keyboard_arrow_down,
-                                size: 18,
-                                color:
-                                    AppTheme.textSecondary,
-                              ),
-                            ],
-                          ),
-                      ),
-                    ),
-
-                    // Green "Start Timer" button - slides in from right
-                    AnimatedContainer(
-                      duration: const Duration(
-                        milliseconds: 200,
-                      ),
-                      curve: Curves.easeOutCubic,
-                      width: (isHovered && !isActive)
-                          ? (availableWidth - 24) * 0.3 - 6
-                          : 0,
-                      margin: EdgeInsets.only(
-                        left: (isHovered && !isActive)
-                            ? 6
-                            : 0,
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      decoration: BoxDecoration(
-                        color: AppTheme.successColor,
-                        borderRadius: BorderRadius.circular(
-                          8,
-                        ),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius:
-                              BorderRadius.circular(8),
-                          onTap: () => _onProjectTap(
-                            project,
-                            isActive,
-                            currentTimer,
-                            projectCount,
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.play_arrow,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-
-        // Task chips and inline entry (only visible when expanded)
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: isTaskEntryExpanded
-              ? Padding(
-                  padding: const EdgeInsets.only(
-                    left: 12,
-                    right: 12,
-                  ),
-                  child: Builder(
-                    builder: (context) {
-                      // Watch UNCONDITIONALLY to ensure proper subscription
-                      final activeTaskId = ref.watch(activeTaskIdProvider);
-                      final currentTaskDuration = ref.watch(currentTaskDurationProvider);
-                      return Column(
-                        children: [
-                          // Task chips
-                          ...projectTasks.asMap().entries.map(
-                            (entry) {
-                              final index = entry.key;
-                              final task = entry.value;
-                              final isTaskActive = activeTaskId == task.id;
-                              return TaskChip(
-                                task: task,
-                                index: index + 1,
-                                isCompact: true,
-                                isActive: isTaskActive,
-                                currentDuration: isTaskActive ? currentTaskDuration : null,
-                                onActivate: () async {
-                                  await ref
-                                      .read(currentTimerProvider.notifier)
-                                      .startTimerWithTask(project, task.id);
-                                  if (mounted) {
-                                    context.showSuccessSnackBar(
-                                      'Started: ${task.taskName}',
-                                    );
-                                  }
-                                },
-                                onEdit: (newName) async {
-                                  final updatedTask = task.copyWith(taskName: newName);
-                                  await ref
-                                      .read(tasksProvider.notifier)
-                                      .updateTask(updatedTask);
-                                },
-                                onDelete: () async {
-                                  await ref
-                                      .read(tasksProvider.notifier)
-                                      .deleteTask(task.id);
-                                },
-                              );
-                            },
-                          ),
-                          // Inline task entry
-                          InlineTaskEntry(
-                            projectId: project.id,
-                            isCompact: true,
-                            onSubmit: (taskName) async {
-                              await ref
-                                  .read(tasksProvider.notifier)
-                                  .createTask(
-                                    projectId: project.id,
-                                    taskName: taskName,
-                                  );
-                              // Note: Can't show snackbar in floating mode - no Scaffold
-                            },
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
-    );
-  }
 }

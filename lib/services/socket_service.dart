@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import '../models/attendance_event.dart';
 import '../models/time_entry_event.dart';
 import 'logger_service.dart';
 import 'storage_service.dart';
@@ -22,6 +23,9 @@ class SocketService {
   // Stream controller for broadcasting time entry events
   final _eventController = StreamController<TimeEntryEvent>.broadcast();
 
+  // Stream controller for broadcasting attendance events
+  final _attendanceEventController = StreamController<AttendanceEvent>.broadcast();
+
   // Stream controller for token error events (for triggering token refresh)
   final _tokenErrorController = StreamController<String>.broadcast();
 
@@ -29,6 +33,9 @@ class SocketService {
 
   /// Stream of time entry events for providers to listen to
   Stream<TimeEntryEvent> get eventStream => _eventController.stream;
+
+  /// Stream of attendance events for providers to listen to
+  Stream<AttendanceEvent> get attendanceEventStream => _attendanceEventController.stream;
 
   /// Stream of token error events for triggering token refresh
   Stream<String> get tokenErrorStream => _tokenErrorController.stream;
@@ -200,6 +207,35 @@ class SocketService {
         _logger.error('Failed to parse timeEntry:ended event', e, stackTrace);
       }
     });
+
+    // Attendance events
+    _socket!.on('attendance:checkedIn', (data) {
+      _logger.info('Received attendance:checkedIn event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = AttendanceEvent.fromCheckedInPayload(payload);
+        _attendanceEventController.add(event);
+        _logger.info('Processed attendance:checkedIn, isActive: ${event.isActive}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse attendance:checkedIn event', e, stackTrace);
+      }
+    });
+
+    _socket!.on('attendance:checkedOut', (data) {
+      _logger.info('Received attendance:checkedOut event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = AttendanceEvent.fromCheckedOutPayload(payload);
+        _attendanceEventController.add(event);
+        _logger.info('Processed attendance:checkedOut, totalSeconds: ${event.totalSeconds}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse attendance:checkedOut event', e, stackTrace);
+      }
+    });
   }
 
   /// Disconnect from the Socket.IO server
@@ -225,6 +261,7 @@ class SocketService {
   void dispose() {
     disconnect();
     _eventController.close();
+    _attendanceEventController.close();
     _tokenErrorController.close();
   }
 }

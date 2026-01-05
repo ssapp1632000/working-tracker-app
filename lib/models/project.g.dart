@@ -26,13 +26,14 @@ class ProjectAdapter extends TypeAdapter<Project> {
       status: fields[6] as String,
       totalTime: fields[7] as Duration,
       lastActiveAt: fields[8] as DateTime?,
+      projectImage: fields[9] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Project obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +51,9 @@ class ProjectAdapter extends TypeAdapter<Project> {
       ..writeByte(7)
       ..write(obj.totalTime)
       ..writeByte(8)
-      ..write(obj.lastActiveAt);
+      ..write(obj.lastActiveAt)
+      ..writeByte(9)
+      ..write(obj.projectImage);
   }
 
   @override

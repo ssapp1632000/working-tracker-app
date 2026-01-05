@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../services/logger_service.dart';
 import 'project_task_card.dart';
 import 'gradient_button.dart';
+import 'add_task_dialog.dart';
 
 /// Result from the multi-project task dialog
 class MultiProjectTaskResult {
@@ -60,18 +61,24 @@ class MultiProjectTaskDialog extends ConsumerStatefulWidget {
   }
 
   /// Show the dialog for project switch (single project)
+  /// Uses the new AddTaskDialog design matching the mobile app
   static Future<MultiProjectTaskResult?> showForProjectSwitch({
     required BuildContext context,
     required ProjectWithTime project,
-  }) {
-    return showDialog<MultiProjectTaskResult>(
+  }) async {
+    final result = await AddTaskDialog.showForProject(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => MultiProjectTaskDialog(
-        title: 'Submit Task Before Switching',
-        mode: TaskDialogMode.projectSwitch,
-        initialProjects: [project],
-      ),
+      project: project,
+      allowAddLater: true,
+    );
+
+    if (result == null) {
+      return null; // User cancelled
+    }
+
+    return MultiProjectTaskResult(
+      completed: result.completed || result.addedLater,
+      totalTasksSubmitted: result.tasksSubmitted,
     );
   }
 

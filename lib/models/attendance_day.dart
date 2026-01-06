@@ -115,12 +115,30 @@ class AttendanceDay {
     return idx >= 0 ? intervals[idx] : null;
   }
 
-  String get formattedCheckIn => checkInTime != null
-      ? DateFormat('h:mm a').format(checkInTime!.toLocal())
+  /// Get the last period's check-in time (most recent check-in)
+  DateTime? get lastPeriodCheckInTime {
+    if (periods != null && periods!.isNotEmpty) {
+      return periods!.last.startTime;
+    }
+    // Fallback to lastCheckInTime for intervals
+    return lastCheckInTime;
+  }
+
+  /// Get the last period's check-out time (null if still checked in)
+  DateTime? get lastPeriodCheckOutTime {
+    if (periods != null && periods!.isNotEmpty) {
+      return periods!.last.endTime;
+    }
+    // Fallback to checkOutTime for intervals
+    return checkOutTime;
+  }
+
+  String get formattedCheckIn => lastPeriodCheckInTime != null
+      ? DateFormat('h:mm a').format(lastPeriodCheckInTime!.toLocal())
       : '--';
 
-  String get formattedCheckOut => checkOutTime != null
-      ? DateFormat('h:mm a').format(checkOutTime!.toLocal())
+  String get formattedCheckOut => lastPeriodCheckOutTime != null
+      ? DateFormat('h:mm a').format(lastPeriodCheckOutTime!.toLocal())
       : '--';
 
   /// Total time as Duration

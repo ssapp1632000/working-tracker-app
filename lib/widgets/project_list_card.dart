@@ -236,7 +236,7 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
                   // Spacing before play button
                   const SizedBox(width: 12),
 
-                  // Play button
+                  // Play button - badge style (circular)
                   MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
@@ -246,14 +246,16 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
                         height: 44,
                         decoration: BoxDecoration(
                           color: widget.isActive
-                              ? AppTheme.successColor
-                              : const Color(0xFF2196F3),
+                              ? AppTheme.successColor.withValues(alpha: 0.15)
+                              : const Color(0xFF2196F3).withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           widget.isActive ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
                           size: 24,
+                          color: widget.isActive
+                              ? AppTheme.successColor
+                              : const Color(0xFF2196F3),
                         ),
                       ),
                     ),

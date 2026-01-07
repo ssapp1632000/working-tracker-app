@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:window_manager/window_manager.dart';
+import 'package:screen_capturer/screen_capturer.dart';
 import '../core/theme/app_theme.dart';
 import '../core/extensions/context_extensions.dart';
 import '../providers/task_provider.dart';
@@ -10,6 +12,8 @@ import '../providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
 import '../services/report_submission_service.dart';
 import '../services/logger_service.dart';
+import '../services/task_extractor_service.dart';
+import '../services/native_audio_recorder.dart';
 import '../models/task_submission.dart';
 import '../models/project_with_time.dart';
 
@@ -285,12 +289,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _logger = LoggerService();
+  final _taskExtractor = TaskExtractorService();
 
   final List<PlatformFile> _attachments = [];
   bool _isSubmitting = false;
+  bool _isRecording = false;
+  bool _isExtractingTask = false;
+  bool _isProcessingMicTap = false;  // Guard against multiple taps
+  NativeAudioRecorder? _audioRecorder;
 
   // File constraints
   static const int maxFiles = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ensure always-on-top is disabled (in case it was left on from previous crash)
+    _resetWindowState();
+  }
+
+  Future<void> _resetWindowState() async {
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      try {
+        await windowManager.setAlwaysOnTop(false);
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  }
   static const int maxImageSizeBytes = 20 * 1024 * 1024; // 20MB for images
   static const int maxFileSizeBytes = 50 * 1024 * 1024; // 50MB for files
   static const int maxTotalSizeBytes = 100 * 1024 * 1024; // 100MB total
@@ -299,7 +325,22 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _cleanupRecorder();
     super.dispose();
+  }
+
+  Future<void> _cleanupRecorder() async {
+    try {
+      if (_audioRecorder != null) {
+        if (_audioRecorder!.isRecording) {
+          await _audioRecorder!.stopRecording();
+        }
+        _audioRecorder!.dispose();
+        _audioRecorder = null;
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
   }
 
   Future<void> _pickFiles() async {
@@ -365,9 +406,236 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     );
   }
 
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.successColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _takeScreenshot() async {
+    try {
+      // Minimize the window before taking screenshot
+      await windowManager.minimize();
+
+      // Wait a moment for the window to minimize
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Use screen_capturer for cross-platform support (Windows, macOS, Linux)
+      CapturedData? capturedData = await screenCapturer.capture(
+        mode: CaptureMode.region, // Interactive region selection
+      );
+
+      // Restore the window after screenshot
+      await windowManager.restore();
+      await windowManager.focus();
+
+      if (capturedData != null && capturedData.imageBytes != null) {
+        // Save to temp file
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final tempDir = Directory.systemTemp;
+        final screenshotPath = '${tempDir.path}/screenshot_$timestamp.png';
+        final file = File(screenshotPath);
+        await file.writeAsBytes(capturedData.imageBytes!);
+
+        setState(() {
+          _attachments.add(PlatformFile(
+            path: screenshotPath,
+            name: 'screenshot_$timestamp.png',
+            size: capturedData.imageBytes!.length,
+          ));
+        });
+
+        if (mounted) {
+          _showSuccess('Screenshot captured');
+        }
+      }
+    } catch (e) {
+      // Make sure to restore window even if there's an error
+      await windowManager.restore();
+      await windowManager.focus();
+
+      _logger.error('Error taking screenshot', e, null);
+      if (mounted) {
+        _showError('Error taking screenshot: $e');
+      }
+    }
+  }
+
   bool _isImageFile(String path) {
     final extension = path.toLowerCase().split('.').last;
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension);
+  }
+
+  Future<void> _handleMicTap() async {
+    // Guard against multiple rapid taps
+    if (_isProcessingMicTap) {
+      _logger.info('Mic tap ignored - already processing');
+      return;
+    }
+    _isProcessingMicTap = true;
+
+    _logger.info('Mic button tapped. isRecording=$_isRecording, isSubmitting=$_isSubmitting, isExtractingTask=$_isExtractingTask');
+    try {
+      if (_isRecording) {
+        await _stopRecordingAndExtract();
+      } else {
+        await _startRecording();
+      }
+    } finally {
+      _isProcessingMicTap = false;
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      _logger.info('Starting recording process...');
+
+      // Create recorder instance
+      _audioRecorder = NativeAudioRecorder();
+
+      // Check permission
+      final hasPermission = await _audioRecorder!.hasPermission();
+      _logger.info('Permission result: $hasPermission');
+
+      if (!hasPermission) {
+        await _cleanupRecorder();
+        if (mounted) {
+          _showError(
+            Platform.isWindows
+                ? 'Microphone access denied. Please enable in Windows Settings > Privacy > Microphone.'
+                : Platform.isMacOS
+                    ? 'Microphone access denied. Please enable in System Settings > Privacy & Security > Microphone.'
+                    : 'Microphone permission is required to record audio.',
+          );
+        }
+        return;
+      }
+
+      _logger.info('Starting native recording...');
+
+      // Start recording using native recorder
+      final started = await _audioRecorder!.startRecording();
+
+      if (!started) {
+        _logger.error('Failed to start native recording', null, null);
+        await _cleanupRecorder();
+        if (mounted) {
+          _showError('Failed to start recording');
+        }
+        return;
+      }
+
+      _logger.info('Recording started successfully');
+
+      setState(() {
+        _isRecording = true;
+      });
+    } catch (e) {
+      _logger.error('Failed to start recording', e, null);
+      await _cleanupRecorder();
+
+      if (mounted) {
+        _showError('Failed to start recording: $e');
+      }
+    }
+  }
+
+  Future<void> _stopRecordingAndExtract() async {
+    _logger.info('_stopRecordingAndExtract called');
+
+    // Update UI immediately
+    setState(() {
+      _isRecording = false;
+      _isExtractingTask = true;
+    });
+
+    try {
+      // Stop the recorder and get the file path
+      _logger.info('Stopping native recorder...');
+
+      final path = await _audioRecorder?.stopRecording();
+      _logger.info('Native recorder stopped, path: $path');
+
+      // Dispose the recorder
+      _audioRecorder?.dispose();
+      _audioRecorder = null;
+
+      if (path == null || path.isEmpty) {
+        _logger.warning('Recording path is null or empty');
+        if (mounted) {
+          _showError('Recording failed - no audio captured');
+          setState(() => _isExtractingTask = false);
+        }
+        return;
+      }
+
+      _logger.info('Recording stopped, checking file at: $path');
+
+      final audioFile = File(path);
+
+      // Verify file exists
+      if (!await audioFile.exists()) {
+        _logger.error('Recording file does not exist: $path', null, null);
+        if (mounted) {
+          _showError('Recording failed - audio file was not created.');
+          setState(() => _isExtractingTask = false);
+        }
+        return;
+      }
+
+      // Check file size
+      final fileSize = await audioFile.length();
+      _logger.info('Recording file size: $fileSize bytes');
+
+      if (fileSize < 100) {
+        _logger.error('Recording file too small: $fileSize bytes', null, null);
+        if (mounted) {
+          _showError('Recording too short. Please record for at least a few seconds.');
+          setState(() => _isExtractingTask = false);
+        }
+        try {
+          await audioFile.delete();
+        } catch (_) {}
+        return;
+      }
+
+      // Validate file size (max 20 MB)
+      if (fileSize > 20 * 1024 * 1024) {
+        if (mounted) {
+          _showError('Recording too long. Maximum file size is 20 MB.');
+          setState(() => _isExtractingTask = false);
+        }
+        await audioFile.delete();
+        return;
+      }
+
+      // Call AI API to extract task
+      final extractedTask = await _taskExtractor.extractTaskFromAudio(audioFile);
+
+      // Clean up temp file
+      try {
+        await audioFile.delete();
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _titleController.text = extractedTask.title.toUpperCase();
+          _descriptionController.text = extractedTask.description;
+          _isExtractingTask = false;
+        });
+        _showSuccess('Task extracted from voice');
+      }
+    } catch (e) {
+      _logger.error('Error processing audio', e, null);
+      if (mounted) {
+        setState(() => _isExtractingTask = false);
+        _showError('Failed to extract task: $e');
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -502,14 +770,64 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 ),
                 const SizedBox(height: 24),
 
-                // Task Title
-                const Text(
-                  'Task Title',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                // Task Title with mic button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Task Title',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    // Voice recording button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: (_isSubmitting || _isExtractingTask)
+                            ? null
+                            : _handleMicTap,
+                        borderRadius: BorderRadius.circular(8),
+                        child: MouseRegion(
+                          cursor: (_isSubmitting || _isExtractingTask)
+                              ? SystemMouseCursors.forbidden
+                              : SystemMouseCursors.click,
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: _isExtractingTask
+                                  ? const Color(0xFF374151)
+                                  : _isRecording
+                                      ? const Color(0xFFDC2626) // Red when recording
+                                      : const Color(0xFF1E3A5F),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: _isExtractingTask
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Icon(
+                                      _isRecording ? Icons.stop_rounded : Icons.mic,
+                                      color: _isRecording
+                                          ? Colors.white
+                                          : const Color(0xFF60A5FA),
+                                      size: 20,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -720,59 +1038,114 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                   const SizedBox(height: 12),
                 ],
 
-                // File picker button
+                // File picker and Screenshot buttons
                 if (_attachments.length < maxFiles)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: _pickFiles,
-                      child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.1),
+                  Row(
+                    children: [
+                      // File picker button
+                      Expanded(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _pickFiles,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A2A2A),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3A5A7C).withValues(alpha: 0.3),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.cloud_upload_outlined,
+                                      color: Color(0xFF5B8AB5),
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Choose file',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF3A5A7C).withValues(alpha: 0.3),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.cloud_upload_outlined,
-                              color: Color(0xFF5B8AB5),
-                              size: 24,
+                      const SizedBox(width: 12),
+                      // Screenshot button
+                      Expanded(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _takeScreenshot,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A2A2A),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF7C6AFA).withValues(alpha: 0.3),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.screenshot_outlined,
+                                      color: Color(0xFF7C6AFA),
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Screenshot',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Choose file',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'PDF, PNG, JPG (max 5 files, images: 20MB, files: 50MB, 100MB total)',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                if (_attachments.length < maxFiles)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'PDF, PNG, JPG (max 5 files, 100MB total)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 const SizedBox(height: 24),
 

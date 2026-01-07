@@ -4,6 +4,7 @@
 #include <windowsx.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "audio_recorder_plugin.h"
 
 // Static pointer for method channel callback
 static FlutterWindow* g_flutter_window = nullptr;
@@ -155,6 +156,11 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  // Register audio recorder plugin
+  AudioRecorderPlugin::RegisterWithRegistrar(
+      flutter_controller_->engine()->GetRegistrarForPlugin("AudioRecorderPlugin"));
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   // Setup method channel for click-through control

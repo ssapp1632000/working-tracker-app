@@ -8,6 +8,11 @@ import '../services/window_service.dart';
 import '../widgets/window_controls.dart';
 import 'dashboard_screen.dart';
 
+/// Email domain for autocomplete suggestion
+const List<String> _emailDomains = [
+  '@silverstonearchitects.com',
+];
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -18,9 +23,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _emailFocusNode = FocusNode();
   final _otpController = TextEditingController();
   final _windowService = WindowService();
   bool _isLoading = false;
+  bool _showEmailSuggestions = false;
 
   // 2FA login state
   bool _isOtpStep = false;
@@ -31,13 +38,105 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     _windowService.setAuthWindowSize();
+    _emailController.addListener(_onEmailChanged);
+    _emailFocusNode.addListener(_onEmailFocusChanged);
   }
 
   @override
   void dispose() {
+    _emailController.removeListener(_onEmailChanged);
+    _emailFocusNode.removeListener(_onEmailFocusChanged);
     _emailController.dispose();
+    _emailFocusNode.dispose();
     _otpController.dispose();
     super.dispose();
+  }
+
+  void _onEmailChanged() {
+    final text = _emailController.text;
+    final hasAtSymbol = text.contains('@');
+    final hasText = text.isNotEmpty;
+
+    setState(() {
+      if (hasText && !hasAtSymbol) {
+        // Show suggestions when user types but hasn't added @ yet
+        _showEmailSuggestions = true;
+      } else if (hasAtSymbol) {
+        // Check if domain is incomplete (partial match)
+        final atIndex = text.indexOf('@');
+        final domain = text.substring(atIndex);
+        final matchingDomains = _emailDomains.where((d) =>
+          d.toLowerCase().startsWith(domain.toLowerCase()) &&
+          d.toLowerCase() != domain.toLowerCase()
+        ).toList();
+
+        if (matchingDomains.isNotEmpty && domain.length > 1) {
+          _showEmailSuggestions = true;
+        } else {
+          _showEmailSuggestions = false;
+        }
+      } else {
+        _showEmailSuggestions = false;
+      }
+    });
+  }
+
+  void _onEmailFocusChanged() {
+    if (!_emailFocusNode.hasFocus) {
+      setState(() {
+        _showEmailSuggestions = false;
+      });
+    } else {
+      // Select all text when focused (optional UX enhancement)
+      if (_emailController.text.isNotEmpty) {
+        _emailController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _emailController.text.length,
+        );
+      }
+      _onEmailChanged(); // Re-evaluate suggestions when focused
+    }
+  }
+
+  void _selectEmailDomain(String domain) {
+    final text = _emailController.text;
+    final atIndex = text.indexOf('@');
+
+    String newEmail;
+    if (atIndex >= 0) {
+      // Replace partial domain
+      newEmail = text.substring(0, atIndex) + domain;
+    } else {
+      // Append domain
+      newEmail = text + domain;
+    }
+
+    _emailController.text = newEmail;
+    _emailController.selection = TextSelection.fromPosition(
+      TextPosition(offset: newEmail.length),
+    );
+    setState(() {
+      _showEmailSuggestions = false;
+    });
+    // Move focus to submit button (next focusable element)
+    FocusScope.of(context).nextFocus();
+  }
+
+  List<String> _getFilteredDomains() {
+    final text = _emailController.text;
+    final atIndex = text.indexOf('@');
+
+    if (atIndex >= 0) {
+      // User has typed @ - filter domains that match partial input
+      final partialDomain = text.substring(atIndex).toLowerCase();
+      return _emailDomains.where((d) =>
+        d.toLowerCase().startsWith(partialDomain) &&
+        d.toLowerCase() != partialDomain
+      ).toList();
+    }
+
+    // No @ yet - show all domains
+    return _emailDomains;
   }
 
   Future<void> _handleLogin() async {
@@ -174,16 +273,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         decoration: AppTheme.backgroundDecoration,
         child: Stack(
           children: [
-            SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 24.0),
-            child: _isOtpStep ? _buildOtpForm() : _buildLoginForm(),
-          ),
-          // Window control buttons (minimize, close)
-          const Positioned(
-            top: 8,
-            right: 8,
-            child: WindowControls(),
-          ),
+            // Main content - fills available space
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 24.0),
+                child: _isOtpStep ? _buildOtpForm() : _buildLoginForm(),
+              ),
+            ),
+            // Window control buttons (minimize, close)
+            const Positioned(
+              top: 8,
+              right: 8,
+              child: WindowControls(),
+            ),
           ],
         ),
       ),
@@ -194,33 +296,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Form(
       key: _formKey,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Title
+          // Top section - Title
           Text(
             'Welcome',
             style: Theme.of(context)
                 .textTheme
                 .headlineMedium
                 ?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
-
-          // Subtitle
+          const SizedBox(height: 4),
           Text(
             'Sign in to continue',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppTheme.textSecondary,
                 ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 32),
 
-          // Email Field
+          // Spacer pushes form to middle
+          const Spacer(),
+
+          // Middle section - Form
           TextFormField(
             controller: _emailController,
+            focusNode: _emailFocusNode,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             enabled: !_isLoading,
@@ -255,9 +355,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               }
             },
           ),
-          const SizedBox(height: 24),
+          // Email domain suggestions
+          if (_showEmailSuggestions) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _getFilteredDomains().map((domain) {
+                final text = _emailController.text;
+                final atIndex = text.indexOf('@');
+                final prefix = atIndex >= 0 ? text.substring(0, atIndex) : text;
 
-          // Login Button
+                return GestureDetector(
+                  onTap: () => _selectEmailDomain(domain),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      '$prefix$domain',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+
+          // Spacer pushes button to bottom
+          const Spacer(),
+
+          // Bottom section - Button
           SizedBox(
             height: 50,
             child: ElevatedButton(
@@ -296,51 +434,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _buildOtpForm() {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Back button
+        // Top section - Back button and Title
         Align(
           alignment: Alignment.centerLeft,
           child: IconButton(
             icon: const Icon(Icons.arrow_back, color: AppTheme.textSecondary),
             onPressed: _isLoading ? null : _goBackToEmailStep,
             tooltip: 'Go back',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
           ),
         ),
         const SizedBox(height: 8),
-
-        // Title
         Text(
           'Verify OTP',
           style: Theme.of(context)
               .textTheme
               .headlineMedium
               ?.copyWith(fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-
-        // Subtitle with email
+        const SizedBox(height: 4),
         Text(
           'Enter the 6-digit code sent to',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: AppTheme.textSecondary,
               ),
-          textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           _email ?? '',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
-          textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 32),
 
-        // OTP Field
+        // Spacer pushes form to middle
+        const Spacer(),
+
+        // Middle section - OTP Field
         TextFormField(
           controller: _otpController,
           keyboardType: TextInputType.number,
@@ -385,9 +519,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             }
           },
         ),
-        const SizedBox(height: 24),
 
-        // Verify Button
+        // Spacer pushes button to bottom
+        const Spacer(),
+
+        // Bottom section - Button and link
         SizedBox(
           height: 50,
           child: ElevatedButton(
@@ -419,9 +555,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
           ),
         ),
-        const SizedBox(height: 16),
-
-        // Resend OTP link
+        const SizedBox(height: 8),
         TextButton(
           onPressed: _isLoading ? null : () {
             _goBackToEmailStep();

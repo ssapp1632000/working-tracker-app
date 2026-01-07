@@ -77,14 +77,14 @@ class WindowService {
     }
   }
 
-  // Set window size for OTP verification screen (slightly taller for more content)
+  // Set window size for OTP verification screen
   Future<void> setOtpWindowSize() async {
     if (!_isDesktop()) return;
 
     try {
       await windowManager.ensureInitialized();
       await windowManager.setResizable(false);
-      await windowManager.setSize(const Size(380, 520));
+      await windowManager.setSize(const Size(380, 420));
       await windowManager.center();
       _logger.info('OTP window size set');
     } catch (e, stackTrace) {

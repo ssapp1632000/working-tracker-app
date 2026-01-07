@@ -10,6 +10,9 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Register native audio recorder plugin
+    AudioRecorderPlugin.register(with: flutterViewController.registrar(forPlugin: "AudioRecorderPlugin"))
+
     super.awakeFromNib()
   }
 }

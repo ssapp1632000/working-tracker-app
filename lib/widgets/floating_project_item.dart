@@ -232,7 +232,7 @@ class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
                   // Spacing before play button
                   const SizedBox(width: 8),
 
-                  // Play button
+                  // Play button - badge style (circular)
                   MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
@@ -242,14 +242,16 @@ class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
                         height: 32,
                         decoration: BoxDecoration(
                           color: widget.isActive
-                              ? AppTheme.successColor
-                              : const Color(0xFF2196F3),
+                              ? AppTheme.successColor.withValues(alpha: 0.15)
+                              : const Color(0xFF2196F3).withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           widget.isActive ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
                           size: 18,
+                          color: widget.isActive
+                              ? AppTheme.successColor
+                              : const Color(0xFF2196F3),
                         ),
                       ),
                     ),

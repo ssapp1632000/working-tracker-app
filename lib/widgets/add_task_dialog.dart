@@ -748,39 +748,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 ),
                 const SizedBox(height: 20),
 
-                // Header
-                const Text(
-                  'ADD TASK',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.projectName.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.5),
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Task Title with mic button
+                // Header with mic button
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text(
-                      'Task Title',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'ADD TASK',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.projectName.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
                     ),
                     // Voice recording button
                     Material(
@@ -828,6 +823,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 24),
+
+                // Task Title
+                const Text(
+                  'Task Title',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(

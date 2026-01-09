@@ -104,8 +104,8 @@ class WindowService {
       await windowManager.ensureInitialized();
       // Set minimum size to current default (420x800)
       await windowManager.setMinimumSize(const Size(420, 800));
-      // Remove maximum size constraint to allow free resizing
-      await windowManager.setMaximumSize(const Size(1920, 1080));
+      // Remove maximum size constraint to allow proper fullscreen on all screen sizes
+      await windowManager.setMaximumSize(const Size(double.infinity, double.infinity));
       await windowManager.setResizable(true);
       await windowManager.setSize(const Size(420, 800));
       await windowManager.center();
@@ -128,6 +128,12 @@ class WindowService {
     if (!_isDesktop()) return;
 
     try {
+      // Exit fullscreen if active before switching to floating mode
+      if (await windowManager.isFullScreen()) {
+        await windowManager.setFullScreen(false);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+
       _isFloatingMode = true;
       _logger.info('Configuring floating mode...');
 
@@ -229,6 +235,12 @@ class WindowService {
       // Small delay to ensure native code processes the disable command
       await Future.delayed(const Duration(milliseconds: 50));
 
+      // Exit fullscreen if active before switching to main mode
+      if (await windowManager.isFullScreen()) {
+        await windowManager.setFullScreen(false);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+
       // Fade out for smooth transition
       await windowManager.setOpacity(0);
 
@@ -250,8 +262,9 @@ class WindowService {
       await windowManager.setMinimumSize(
         const Size(420, 800),
       );
+      // Remove maximum size constraint to allow proper fullscreen on all screen sizes
       await windowManager.setMaximumSize(
-        const Size(1920, 1080),
+        const Size(double.infinity, double.infinity),
       );
       await windowManager.setResizable(true);
       await windowManager.setSize(const Size(420, 800));

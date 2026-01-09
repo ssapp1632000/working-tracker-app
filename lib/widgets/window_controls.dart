@@ -33,7 +33,13 @@ class _WindowControlsState extends State<WindowControls> {
   Future<void> _toggleFullScreen() async {
     final newState = !_isFullScreen;
     await windowManager.setFullScreen(newState);
-    setState(() => _isFullScreen = newState);
+    // Wait briefly for window state to settle (important for both Windows and macOS)
+    await Future.delayed(const Duration(milliseconds: 100));
+    // Verify actual state from window manager
+    final actualState = await windowManager.isFullScreen();
+    if (mounted) {
+      setState(() => _isFullScreen = actualState);
+    }
   }
 
   @override

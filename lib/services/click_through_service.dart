@@ -30,4 +30,30 @@ class ClickThroughService {
   static Future<void> enableClickThrough() async {
     await setClickThroughEnabled(true);
   }
+
+  /// Restore normal window style (WS_OVERLAPPEDWINDOW)
+  /// This restores resize borders (WS_THICKFRAME) and removes layered styles
+  /// Call this when switching back from floating mode to ensure proper window behavior
+  static Future<void> restoreNormalWindowStyle() async {
+    if (!Platform.isWindows) return;
+
+    try {
+      await _channel.invokeMethod('restoreNormalWindowStyle');
+    } catch (e) {
+      // Silently ignore errors
+    }
+  }
+
+  /// Set frameless mode for the window
+  /// When enabled, removes all window frame styles (caption, borders, etc.)
+  /// When disabled, restores window frame styles
+  static Future<void> setFrameless(bool frameless) async {
+    if (!Platform.isWindows) return;
+
+    try {
+      await _channel.invokeMethod('setFrameless', frameless);
+    } catch (e) {
+      // Silently ignore errors
+    }
+  }
 }

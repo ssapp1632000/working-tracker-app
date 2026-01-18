@@ -730,6 +730,88 @@ class ApiService {
     }
   }
 
+  /// Fetch my daily reports (my tasks grouped by date)
+  /// GET /reports/daily-reports/my-tasks
+  ///
+  /// This is the secure endpoint that only returns the authenticated user's tasks.
+  /// Tasks are grouped by reportDate client-side to match the UI format.
+  Future<Map<String, dynamic>> getMyDailyReports({
+    DateTime? from,
+    DateTime? to,
+    String? projectId,
+  }) async {
+    try {
+      _logger.info('Fetching my daily reports...');
+
+      final queryParams = <String, String>{};
+      if (from != null) {
+        queryParams['from'] = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+      }
+      if (to != null) {
+        queryParams['to'] = '${to.year}-${to.month.toString().padLeft(2, '0')}-${to.day.toString().padLeft(2, '0')}';
+      }
+      if (projectId != null) queryParams['projectId'] = projectId;
+
+      final uri = Uri.parse('$baseUrl/reports/daily-reports/my-tasks').replace(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      final response = await _makeRequest(method: 'GET', uri: uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        if (data['success'] == true) {
+          final tasks = (data['tasks'] as List?) ?? [];
+
+          // Group tasks by reportDate
+          final Map<String, Map<String, dynamic>> groupedByDate = {};
+
+          for (final task in tasks) {
+            if (task is Map<String, dynamic>) {
+              final report = task['report'] as Map<String, dynamic>?;
+              final reportDate = report?['reportDate'] ?? task['reportDate'];
+              final reportId = report?['_id'] ?? task['reportId'] ?? reportDate;
+
+              if (reportDate != null) {
+                final dateKey = reportDate.toString().split('T')[0];
+
+                if (!groupedByDate.containsKey(dateKey)) {
+                  groupedByDate[dateKey] = {
+                    '_id': reportId,
+                    'reportDate': reportDate,
+                    'tasks': <Map<String, dynamic>>[],
+                    'taskCount': 0,
+                  };
+                }
+
+                (groupedByDate[dateKey]!['tasks'] as List).add(task);
+                groupedByDate[dateKey]!['taskCount'] =
+                    (groupedByDate[dateKey]!['tasks'] as List).length;
+              }
+            }
+          }
+
+          // Convert to list and sort by date (newest first)
+          final reports = groupedByDate.values.toList()
+            ..sort((a, b) => (b['reportDate'] ?? '').compareTo(a['reportDate'] ?? ''));
+
+          _logger.info('Successfully fetched ${reports.length} reports with ${tasks.length} total tasks');
+          return {
+            'reports': reports,
+            'meta': {'totalPages': 1, 'currentPage': 1, 'totalReports': reports.length},
+          };
+        }
+      }
+
+      _logger.warning('Failed to fetch my daily reports: ${response.statusCode}');
+      return {'reports': [], 'meta': {}};
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching my daily reports', e, stackTrace);
+      rethrow;
+    }
+  }
+
   // ============================================================================
   // ATTENDANCE APIs
   // ============================================================================

@@ -34,11 +34,23 @@ class AppTheme {
         end: Alignment.bottomRight,
       );
 
-  // Background Image Decoration
+  // Background Image Decoration (for normal mode)
   static BoxDecoration get backgroundDecoration => const BoxDecoration(
     image: DecorationImage(
       image: AssetImage('assets/images/background.png'),
       fit: BoxFit.cover,
+    ),
+  );
+
+  // Fullscreen Background Decoration (gradient for crisp display)
+  static BoxDecoration get fullscreenBackgroundDecoration => const BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF0A0A0A),  // Near black top
+        Color(0xFF2D2D2D),  // Dark gray bottom
+      ],
     ),
   );
 

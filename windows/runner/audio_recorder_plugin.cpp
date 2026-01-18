@@ -15,9 +15,12 @@ static std::wstring StringToWString(const std::string& str) {
 }
 
 void AudioRecorderPlugin::RegisterWithRegistrar(
-    flutter::PluginRegistrarWindows* registrar) {
-    auto plugin = std::make_unique<AudioRecorderPlugin>(registrar);
-    registrar->AddPlugin(std::move(plugin));
+    FlutterDesktopPluginRegistrarRef registrar_ref) {
+    // Wrap the registrar ref
+    static auto registrar = std::make_unique<flutter::PluginRegistrarWindows>(registrar_ref);
+    // Create plugin and keep it alive in a static variable
+    static std::unique_ptr<AudioRecorderPlugin> plugin =
+        std::make_unique<AudioRecorderPlugin>(registrar.get());
 }
 
 AudioRecorderPlugin::AudioRecorderPlugin(flutter::PluginRegistrarWindows* registrar) {
@@ -207,7 +210,7 @@ void AudioRecorderPlugin::RecordingThread() {
         hr = pAudioType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
     }
     if (SUCCEEDED(hr)) {
-        hr = source_reader_->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+        hr = source_reader_->SetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM),
                                                   nullptr, pAudioType);
     }
     if (pAudioType) {
@@ -224,7 +227,7 @@ void AudioRecorderPlugin::RecordingThread() {
 
     // Get the actual format
     IMFMediaType* pActualType = nullptr;
-    hr = source_reader_->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &pActualType);
+    hr = source_reader_->GetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM), &pActualType);
     if (FAILED(hr)) {
         std::cerr << "AudioRecorderPlugin: Failed to get media type" << std::endl;
         source_reader_->Release();
@@ -332,7 +335,7 @@ void AudioRecorderPlugin::RecordingThread() {
         IMFSample* pSample = nullptr;
 
         hr = source_reader_->ReadSample(
-            MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM),
             0,
             nullptr,
             &dwFlags,

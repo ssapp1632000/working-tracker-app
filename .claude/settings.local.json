@@ -6,7 +6,13 @@
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd project sorting, Windows screenshot support, and fix floating mode timing\n\n- Add lastActiveAt field to Project model for tracking recent activity\n- Sort projects by most recently worked on (active project first)\n- Replace macOS-only screencapture with cross-platform screen_capturer\n- Fix floating mode UI/window timing by updating size verification to 280x80\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git config:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd click-through functionality and smooth mode transitions\n\n- Implement Windows click-through for floating widget (WS_EX_TRANSPARENT)\n- Add mouse position polling to toggle click-through based on hover area\n- Only rightmost 85px is interactive when collapsed, rest passes clicks through\n- Add opacity-based fade transitions for smooth mode switching\n- Fix RenderFlex overflow by resizing window before UI state change\n- Fix window disappearing issue after multiple mode switches\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(echo:*)",
+      "Bash(dart --version:*)",
+      "Bash(flutter build:*)",
+      "Bash(flutter run:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter pub get:*)"
     ],
     "deny": [],
     "ask": []

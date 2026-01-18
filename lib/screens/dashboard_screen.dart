@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,8 @@ import '../services/window_service.dart';
 import '../widgets/window_controls.dart';
 import '../widgets/multi_project_task_dialog.dart';
 import '../widgets/project_list_card.dart';
+import '../widgets/floating_widget.dart';
+import '../widgets/add_task_dialog.dart';
 import '../models/project_with_time.dart';
 import '../providers/pending_tasks_provider.dart';
 import 'login_screen.dart';
@@ -271,6 +274,8 @@ class _DashboardScreenState
 
     if (confirmed == true) {
       await ref.read(currentUserProvider.notifier).logout();
+      // Resize window to auth size BEFORE navigating
+      await WindowService().setAuthWindowSize();
       if (mounted) {
         context.pushReplacement(const LoginScreen());
       }
@@ -444,6 +449,40 @@ class _DashboardScreenState
     }
   }
 
+  /// Handle add task request from floating widget
+  /// Shows the add task form and can optionally return to floating mode
+  Future<void> _handleAddTaskFromFloating() async {
+    final taskData = ref.read(addTaskDataProvider);
+
+    if (taskData == null) {
+      _logger.warning('Add task requested but no task data found');
+      return;
+    }
+
+    // Clear the stored task data
+    ref.read(addTaskDataProvider.notifier).state = null;
+
+    // Show the add task sheet
+    final result = await AddTaskSheet.show(
+      context: context,
+      projectId: taskData.projectId,
+      projectName: taskData.projectName,
+      ref: ref,
+    );
+
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Task added'),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -473,6 +512,9 @@ class _DashboardScreenState
               break;
             case NavigationRequest.projectSwitch:
               _handleProjectSwitchFromFloating();
+              break;
+            case NavigationRequest.addTask:
+              _handleAddTaskFromFloating();
               break;
           }
 
@@ -518,106 +560,123 @@ class _DashboardScreenState
       }
     });
 
-    // Don't render dashboard when in floating mode to prevent AppBar overlay
+    // Show floating widget when in floating mode instead of dashboard
     if (isFloatingMode) {
-      return const SizedBox.shrink();
+      return const FloatingWidget();
     }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: AppTheme.backgroundDecoration,
-        child: Stack(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Determine if we're in fullscreen/large mode
+          final isLargeScreen = constraints.maxWidth > 500;
+          final contentMaxWidth = isLargeScreen ? 800.0 : double.infinity;
+          final horizontalPadding = isLargeScreen ? 32.0 : 16.0;
+
+          // Use gradient for fullscreen, image for normal mode
+          final backgroundDecoration = isLargeScreen
+              ? AppTheme.fullscreenBackgroundDecoration
+              : AppTheme.backgroundDecoration;
+
+          return Container(
+            decoration: backgroundDecoration,
+            child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              16.0,
-              40.0,
-              16.0,
-              16.0,
-            ),
+            padding: const EdgeInsets.only(top: 40.0),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.stretch,
               children: [
-                // Header row with user info and actions
-                Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-                  children: [
-                    // User greeting
-                    Expanded(
-                      child: Text(
-                        'Hi, ${user?.name ?? 'User'}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    // Action buttons
-                    Row(
-                      children: [
-                        // My Reports button
-                        IconButton(
-                          icon: const Icon(
-                            Icons.description_outlined,
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const DailyReportsScreen(),
+                // Header row with user info and actions - FULL WIDTH
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // User greeting
+                      Expanded(
+                        child: Text(
+                          'Hi, ${user?.name ?? 'User'}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          },
-                          tooltip: 'My Reports',
-                          padding: EdgeInsets.zero,
-                          constraints:
-                              const BoxConstraints(),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 12),
-                        // Floating mode button
-                        IconButton(
-                          icon: const Icon(
-                            Icons.picture_in_picture_alt,
-                            size: 20,
+                      ),
+                      // Action buttons
+                      Row(
+                        children: [
+                          // My Reports button
+                          IconButton(
+                            icon: const Icon(
+                              Icons.description_outlined,
+                              size: 20,
+                            ),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const DailyReportsScreen(),
+                                ),
+                              );
+                            },
+                            tooltip: 'My Reports',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                           ),
-                          onPressed: () async {
-                            await ref
-                                .read(
-                                  windowModeProvider
-                                      .notifier,
-                                )
-                                .switchToFloating();
-                          },
-                          tooltip: 'Floating Widget',
-                          padding: EdgeInsets.zero,
-                          constraints:
-                              const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 12),
-                        // Logout button
-                        IconButton(
-                          icon: const Icon(
-                            Icons.logout,
-                            size: 20,
+                          const SizedBox(width: 12),
+                          // Floating mode button
+                          IconButton(
+                            icon: const Icon(
+                              Icons.picture_in_picture_alt,
+                              size: 20,
+                            ),
+                            onPressed: () async {
+                              await ref
+                                  .read(windowModeProvider.notifier)
+                                  .switchToFloating();
+                            },
+                            tooltip: 'Floating Widget',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                           ),
-                          onPressed: _handleLogout,
-                          tooltip: 'Logout',
-                          padding: EdgeInsets.zero,
-                          constraints:
-                              const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 12),
+                          // Logout button
+                          IconButton(
+                            icon: const Icon(
+                              Icons.logout,
+                              size: 20,
+                            ),
+                            onPressed: _handleLogout,
+                            tooltip: 'Logout',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
+
+                // Main content - CONSTRAINED WIDTH
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          0,
+                          horizontalPadding,
+                          16.0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
 
                 // Attendance Time Display (Read-Only)
                 Builder(
@@ -1184,6 +1243,12 @@ class _DashboardScreenState
                   ),
                 ),
 
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1232,8 +1297,10 @@ class _DashboardScreenState
               ),
             ),
         ],
+            ),
+          );
+          },
         ),
-      ),
     );
   }
 }

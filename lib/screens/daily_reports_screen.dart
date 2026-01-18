@@ -68,9 +68,7 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
     });
 
     try {
-      final result = await _api.getDailyReports(
-        page: _currentPage,
-        limit: 20,
+      final result = await _api.getMyDailyReports(
         from: _fromDate,
         to: _toDate,
       );
@@ -82,7 +80,8 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
 
       setState(() {
         _reports = reports;
-        _hasMore = _currentPage < (meta['totalPages'] ?? 1);
+        // getMyDailyReports returns all data at once (no server-side pagination)
+        _hasMore = false;
         _isLoading = false;
       });
     } catch (e) {
@@ -102,10 +101,9 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
     });
 
     try {
-      final nextPage = _currentPage + 1;
-      final result = await _api.getDailyReports(
-        page: nextPage,
-        limit: 20,
+      // getMyDailyReports returns all data at once (no server-side pagination)
+      // so we just call it again with the same filters
+      final result = await _api.getMyDailyReports(
         from: _fromDate,
         to: _toDate,
       );
@@ -116,9 +114,9 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
       final meta = result['meta'] as Map<String, dynamic>;
 
       setState(() {
-        _reports.addAll(reports);
-        _currentPage = nextPage;
-        _hasMore = nextPage < (meta['totalPages'] ?? 1);
+        _reports = reports;
+        _currentPage = 1;
+        _hasMore = false; // All data loaded at once
         _isLoadingMore = false;
       });
     } catch (e) {

@@ -20,6 +20,12 @@ class FlutterWindow : public Win32Window {
   // Enable or disable click-through mode using WS_EX_TRANSPARENT
   void SetClickThroughEnabled(bool enabled);
 
+  // Restore normal window style (WS_OVERLAPPEDWINDOW) for proper resize/drag
+  void RestoreNormalWindowStyle();
+
+  // Set frameless mode (remove all window frame styles)
+  void SetFrameless(bool frameless);
+
  protected:
   // Win32Window:
   bool OnCreate() override;

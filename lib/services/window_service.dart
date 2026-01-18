@@ -96,20 +96,19 @@ class WindowService {
     }
   }
 
-  // Set window size for dashboard (resizable with minimum constraints)
+  // Set window size for dashboard (non-resizable fixed size)
   Future<void> setDashboardWindowSize() async {
     if (!_isDesktop()) return;
 
     try {
       await windowManager.ensureInitialized();
-      // Set minimum size to current default (420x800)
+      // Set fixed size for dashboard (non-resizable)
       await windowManager.setMinimumSize(const Size(420, 800));
-      // Remove maximum size constraint to allow proper fullscreen on all screen sizes
-      await windowManager.setMaximumSize(const Size(double.infinity, double.infinity));
-      await windowManager.setResizable(true);
+      await windowManager.setMaximumSize(const Size(420, 800));
+      await windowManager.setResizable(false);
       await windowManager.setSize(const Size(420, 800));
       await windowManager.center();
-      _logger.info('Dashboard window size set (resizable, min: 420x800)');
+      _logger.info('Dashboard window size set (non-resizable, 420x800)');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to set dashboard window size',
@@ -258,15 +257,14 @@ class WindowService {
         _logger.warning('Could not restore title bar: $e');
       }
 
-      // Set window size for dashboard with free resizing (min: 420x800)
+      // Set window size for dashboard (non-resizable fixed size)
       await windowManager.setMinimumSize(
         const Size(420, 800),
       );
-      // Remove maximum size constraint to allow proper fullscreen on all screen sizes
       await windowManager.setMaximumSize(
-        const Size(double.infinity, double.infinity),
+        const Size(420, 800),
       );
-      await windowManager.setResizable(true);
+      await windowManager.setResizable(false);
       await windowManager.setSize(const Size(420, 800));
       await windowManager.center();
 

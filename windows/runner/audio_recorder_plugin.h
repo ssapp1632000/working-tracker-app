@@ -21,10 +21,11 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "mf.lib")
 
 class AudioRecorderPlugin {
 public:
-    static void RegisterWithRegistrar(flutter::PluginRegistrarWindows* registrar);
+    static void RegisterWithRegistrar(FlutterDesktopPluginRegistrarRef registrar);
 
     AudioRecorderPlugin(flutter::PluginRegistrarWindows* registrar);
     ~AudioRecorderPlugin();

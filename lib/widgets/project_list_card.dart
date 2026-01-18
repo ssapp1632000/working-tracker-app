@@ -131,6 +131,7 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
                           children: [
@@ -190,33 +191,38 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
                         const SizedBox(height: 6),
                         // Tasks badge
                         if (taskCount > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.successColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  size: 14,
-                                  color: AppTheme.successColor,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$taskCount task${taskCount > 1 ? 's' : ''} today',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.successColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    size: 14,
                                     color: AppTheme.successColor,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      '$taskCount task${taskCount > 1 ? 's' : ''} today',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppTheme.successColor,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         // Expand indicator
@@ -233,33 +239,29 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
                     ),
                   ),
 
-                  // Spacing before play button
-                  const SizedBox(width: 12),
-
-                  // Play button - badge style (circular)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: widget.isLoading ? null : widget.onStartTimer,
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: widget.isActive
-                              ? AppTheme.successColor.withValues(alpha: 0.15)
-                              : const Color(0xFF2196F3).withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          widget.isActive ? Icons.pause : Icons.play_arrow,
-                          size: 24,
-                          color: widget.isActive
-                              ? AppTheme.successColor
-                              : const Color(0xFF2196F3),
+                  // Play button - only show for inactive projects
+                  if (!widget.isActive) ...[
+                    const SizedBox(width: 12),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: widget.isLoading ? null : widget.onStartTimer,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2196F3).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            size: 24,
+                            color: Color(0xFF2196F3),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

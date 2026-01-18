@@ -3,18 +3,18 @@ import '../services/window_service.dart';
 import '../services/logger_service.dart';
 
 // Window service provider
-final windowServiceProvider = Provider<WindowService>((
-  ref,
-) {
+final windowServiceProvider = Provider<WindowService>((ref) {
   return WindowService();
 });
 
-// Window mode state provider
-final windowModeProvider =
-    StateNotifierProvider<WindowModeNotifier, bool>((ref) {
-      return WindowModeNotifier(ref);
-    });
+/// Provider to track if in floating mode
+final floatingWindowOpenProvider = StateProvider<bool>((ref) => false);
 
+/// Window mode notifier for managing window state
+///
+/// Single-window architecture with two modes:
+/// - Main mode: Normal resizable window with standard frame
+/// - Floating mode: Small always-on-top window with hidden title bar
 class WindowModeNotifier extends StateNotifier<bool> {
   final Ref _ref;
   late final WindowService _windowService;
@@ -26,23 +26,19 @@ class WindowModeNotifier extends StateNotifier<bool> {
     _logger = LoggerService();
   }
 
-  // Switch to floating mode
+  /// Switch to floating mode
   Future<void> switchToFloating() async {
     try {
       _logger.info('Switching to floating mode...');
 
-      // Set state FIRST to hide the dashboard immediately
-      // This prevents overflow errors during window resize
+      // Set state BEFORE changing window size to prevent dashboard
+      // from rendering with tiny window during transition
       state = true;
-      _logger.info('Window mode: Floating (UI updated)');
+      _ref.read(floatingWindowOpenProvider.notifier).state = true;
 
-      // Small delay to let UI update before window resize starts
-      await Future.delayed(const Duration(milliseconds: 50));
-
-      // Then configure window to resize
       await _windowService.switchToFloatingMode();
 
-      _logger.info('Window configured for floating mode');
+      _logger.info('Switched to floating mode');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to switch to floating mode',
@@ -50,30 +46,29 @@ class WindowModeNotifier extends StateNotifier<bool> {
         stackTrace,
       );
       state = false;
+      _ref.read(floatingWindowOpenProvider.notifier).state = false;
     }
   }
 
-  // Switch to main mode
+  /// Switch back to main mode
   Future<void> switchToMain() async {
     try {
       _logger.info('Switching to main mode...');
 
-      // Resize window FIRST (this hides window during transition)
-      // This prevents overflow errors when dashboard renders
+      // First restore window size, then update state
+      // This prevents FloatingWidget from rendering with large window during transition
       await _windowService.switchToMainMode();
 
-      // THEN update UI state after window is resized
       state = false;
-      _logger.info('Window mode: Main (UI updated)');
+      _ref.read(floatingWindowOpenProvider.notifier).state = false;
 
-      _logger.info('Window configured for main mode');
+      _logger.info('Switched to main mode');
     } catch (e, stackTrace) {
       _logger.error(
         'Failed to switch to main mode',
         e,
         stackTrace,
       );
-      state = true;
     }
   }
 
@@ -89,3 +84,8 @@ class WindowModeNotifier extends StateNotifier<bool> {
   // Check current mode
   bool get isFloating => state;
 }
+
+// Window mode state provider
+final windowModeProvider = StateNotifierProvider<WindowModeNotifier, bool>((ref) {
+  return WindowModeNotifier(ref);
+});

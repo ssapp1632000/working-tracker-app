@@ -192,7 +192,33 @@ Win32Window::MessageHandler(HWND hwnd,
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;
 
-      SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
+      // Validate position is within monitor bounds
+      LONG newLeft = newRectSize->left;
+      LONG newTop = newRectSize->top;
+
+      // Get the monitor that contains the new position
+      POINT pt = {newLeft, newTop};
+      HMONITOR monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+      MONITORINFO mi = {};
+      mi.cbSize = sizeof(MONITORINFO);
+      if (GetMonitorInfo(monitor, &mi)) {
+        // Clamp position to monitor work area (excludes taskbar)
+        if (newLeft < mi.rcWork.left) {
+          newLeft = mi.rcWork.left;
+        }
+        if (newTop < mi.rcWork.top) {
+          newTop = mi.rcWork.top;
+        }
+        // Ensure window doesn't extend past right/bottom edges
+        if (newLeft + newWidth > mi.rcWork.right) {
+          newLeft = mi.rcWork.right - newWidth;
+        }
+        if (newTop + newHeight > mi.rcWork.bottom) {
+          newTop = mi.rcWork.bottom - newHeight;
+        }
+      }
+
+      SetWindowPos(hwnd, nullptr, newLeft, newTop, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
       return 0;

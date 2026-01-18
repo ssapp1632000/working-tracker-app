@@ -68,6 +68,50 @@ void CALLBACK FlutterWindow::MousePollTimerProc(HWND hwnd, UINT uMsg, UINT_PTR i
   }
 }
 
+void FlutterWindow::RestoreNormalWindowStyle() {
+  HWND hwnd = GetHandle();
+  if (!hwnd) return;
+
+  // Restore standard window style with resize borders (WS_THICKFRAME)
+  // WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+  LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+  style |= WS_OVERLAPPEDWINDOW;
+  SetWindowLongPtr(hwnd, GWL_STYLE, style);
+
+  // Remove layered/transparent extended styles
+  LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+  exStyle &= ~(WS_EX_LAYERED | WS_EX_TRANSPARENT);
+  SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+
+  // Force window to recalculate frame and repaint
+  SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+}
+
+void FlutterWindow::SetFrameless(bool frameless) {
+  HWND hwnd = GetHandle();
+  if (!hwnd) return;
+
+  LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+
+  if (frameless) {
+    // Remove all window frame styles - make completely frameless
+    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+    // Keep only WS_POPUP for a borderless window
+    style |= WS_POPUP;
+  } else {
+    // Restore window frame styles (but not full WS_OVERLAPPEDWINDOW since we use hidden title bar)
+    style &= ~WS_POPUP;
+    style |= WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
+  }
+
+  SetWindowLongPtr(hwnd, GWL_STYLE, style);
+
+  // Force window to recalculate frame and repaint
+  SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+}
+
 void FlutterWindow::UpdateTransparencyForMousePosition() {
   HWND hwnd = GetHandle();
   if (!hwnd || !click_through_enabled_) return;
@@ -130,6 +174,17 @@ void FlutterWindow::SetupMethodChannel() {
           const auto* enabled = std::get_if<bool>(call.arguments());
           if (enabled) {
             SetClickThroughEnabled(*enabled);
+            result->Success();
+            return;
+          }
+          result->Error("INVALID_ARGS", "Expected boolean argument");
+        } else if (call.method_name() == "restoreNormalWindowStyle") {
+          RestoreNormalWindowStyle();
+          result->Success();
+        } else if (call.method_name() == "setFrameless") {
+          const auto* frameless = std::get_if<bool>(call.arguments());
+          if (frameless) {
+            SetFrameless(*frameless);
             result->Success();
             return;
           }

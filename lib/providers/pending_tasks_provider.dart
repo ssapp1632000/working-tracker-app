@@ -102,10 +102,17 @@ class PendingTasksNotifier extends StateNotifier<PendingTasksState> {
 
     try {
       final rawEntries = await _api.getPendingTimeEntries();
-      final entries =
+      final allEntries =
           rawEntries.map((e) => PendingTimeEntry.fromJson(e)).toList();
 
-      _logger.info('Loaded ${entries.length} pending entries');
+      // Filter to only show entries from before today (not today's entries)
+      final today = DateTime.now();
+      final todayStart = DateTime(today.year, today.month, today.day);
+      final entries = allEntries
+          .where((entry) => entry.date.isBefore(todayStart))
+          .toList();
+
+      _logger.info('Loaded ${allEntries.length} pending entries, ${entries.length} before today');
 
       if (entries.isEmpty) {
         state = const PendingTasksCompleted();

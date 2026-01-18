@@ -122,7 +122,9 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
         borderRadius: BorderRadius.circular(20),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-      child: Padding(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -229,6 +231,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
                 ),
               ),
           ],
+        ),
         ),
       ),
     );
@@ -832,17 +835,36 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isLargeScreen = screenWidth > 500;
 
-    return Container(
-      margin: EdgeInsets.only(bottom: bottomInset),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-          child: Form(
+    // Always align to bottom for bottom sheet behavior
+    // Use Column with Spacer to allow taps on empty area to close the sheet
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // This spacer area allows taps to pass through to close the sheet
+        Flexible(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        // The actual bottom sheet content
+        Container(
+          margin: EdgeInsets.only(bottom: bottomInset),
+          constraints: BoxConstraints(
+            maxWidth: isLargeScreen ? 500 : double.infinity,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: Form(
             key: _formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -890,51 +912,52 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                         ),
                       ],
                     ),
-                    // Voice recording button
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: (_isSubmitting || _isExtractingTask)
-                            ? null
-                            : _handleMicTap,
-                        borderRadius: BorderRadius.circular(8),
-                        child: MouseRegion(
-                          cursor: (_isSubmitting || _isExtractingTask)
-                              ? SystemMouseCursors.forbidden
-                              : SystemMouseCursors.click,
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: _isExtractingTask
-                                  ? const Color(0xFF374151)
-                                  : _isRecording
-                                      ? const Color(0xFFDC2626) // Red when recording
-                                      : const Color(0xFF1E3A5F),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: _isExtractingTask
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    )
-                                  : Icon(
-                                      _isRecording ? Icons.stop_rounded : Icons.mic,
-                                      color: _isRecording
-                                          ? Colors.white
-                                          : const Color(0xFF60A5FA),
-                                      size: 20,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Voice recording button - temporarily hidden (not implemented)
+                    // TODO: Uncomment when voice recording is implemented
+                    // Material(
+                    //   color: Colors.transparent,
+                    //   child: InkWell(
+                    //     onTap: (_isSubmitting || _isExtractingTask)
+                    //         ? null
+                    //         : _handleMicTap,
+                    //     borderRadius: BorderRadius.circular(8),
+                    //     child: MouseRegion(
+                    //       cursor: (_isSubmitting || _isExtractingTask)
+                    //           ? SystemMouseCursors.forbidden
+                    //           : SystemMouseCursors.click,
+                    //       child: Container(
+                    //         width: 36,
+                    //         height: 36,
+                    //         decoration: BoxDecoration(
+                    //           color: _isExtractingTask
+                    //               ? const Color(0xFF374151)
+                    //               : _isRecording
+                    //                   ? const Color(0xFFDC2626) // Red when recording
+                    //                   : const Color(0xFF1E3A5F),
+                    //           borderRadius: BorderRadius.circular(8),
+                    //         ),
+                    //         child: Center(
+                    //           child: _isExtractingTask
+                    //               ? const SizedBox(
+                    //                   width: 16,
+                    //                   height: 16,
+                    //                   child: CircularProgressIndicator(
+                    //                     strokeWidth: 2,
+                    //                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    //                   ),
+                    //                 )
+                    //               : Icon(
+                    //                   _isRecording ? Icons.stop_rounded : Icons.mic,
+                    //                   color: _isRecording
+                    //                       ? Colors.white
+                    //                       : const Color(0xFF60A5FA),
+                    //                   size: 20,
+                    //                 ),
+                    //         ),
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -1042,16 +1065,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                         ),
                       ),
                     ),
-                    // AI sparkle icon (decorative)
-                    Positioned(
-                      right: 12,
-                      bottom: 12,
-                      child: Icon(
-                        Icons.auto_awesome,
-                        size: 20,
-                        color: Colors.amber.withValues(alpha: 0.7),
-                      ),
-                    ),
+                    // AI sparkle icon - temporarily hidden (not implemented)
+                    // TODO: Uncomment when AI enhancement is implemented
+                    // Positioned(
+                    //   right: 12,
+                    //   bottom: 12,
+                    //   child: Icon(
+                    //     Icons.auto_awesome,
+                    //     size: 20,
+                    //     color: Colors.amber.withValues(alpha: 0.7),
+                    //   ),
+                    // ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -1307,7 +1331,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
           ),
         ),
-      ),
+        ),
+        ),
+      ],
     );
   }
 }

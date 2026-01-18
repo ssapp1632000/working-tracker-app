@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/attendance_event.dart';
 import '../models/time_entry_event.dart';
 import '../models/project.dart';
 import '../services/api_service.dart';
@@ -71,8 +72,10 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
   final _api = ApiService();
   final _socketService = SocketService();
   StreamSubscription<TimeEntryEvent>? _socketSubscription;
+  StreamSubscription<AttendanceEvent>? _attendanceSubscription;
   Timer? _uiRefreshTimer;
   DateTime? _taskStartTime;
+  bool _isSwitchingProject = false; // Flag to prevent race condition during project switch
 
   DateTime? get taskStartTime => _taskStartTime;
 
@@ -187,6 +190,13 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
 
       // Check if there's NO open entry - clear timer state but keep durations
       if (openEntry == null) {
+        // Don't clear state if we're in the middle of switching projects
+        // (race condition: socket event fires between endTime and startTime)
+        if (_isSwitchingProject) {
+          _logger.info('No open entry but switching project in progress - skipping state clear');
+          await _startSocketEventListener();
+          return;
+        }
         _logger.info('No open entry on server - clearing timer state (keeping completed durations)');
         state = null;
         _ref.read(selectedProjectProvider.notifier).state = null;
@@ -318,6 +328,33 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
         _logger.error('Socket event stream error', error, null);
       },
     );
+
+    // Listen to attendance checkout events to stop timer
+    _attendanceSubscription?.cancel();
+    _attendanceSubscription = _socketService.attendanceEventStream.listen(
+      (event) {
+        if (event.type == AttendanceEventType.checkedOut && !event.isActive) {
+          _logger.info('Attendance checkout detected, stopping timer if running');
+          _handleCheckoutEvent();
+        }
+      },
+      onError: (error) {
+        _logger.error('Attendance event stream error', error, null);
+      },
+    );
+  }
+
+  /// Handle checkout event - stop timer without calling API (server already stopped it)
+  Future<void> _handleCheckoutEvent() async {
+    if (state != null) {
+      _logger.info('Stopping timer due to checkout event');
+      await saveCurrentTaskDuration();
+      _stopUiRefreshTimer();
+      state = null;
+      _ref.read(activeTaskIdProvider.notifier).state = null;
+      _ref.read(selectedProjectProvider.notifier).state = null;
+      _logger.info('Timer stopped due to checkout');
+    }
   }
 
   /// Handle incoming socket events
@@ -349,6 +386,8 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
   void stopSocketEventListener() {
     _socketSubscription?.cancel();
     _socketSubscription = null;
+    _attendanceSubscription?.cancel();
+    _attendanceSubscription = null;
   }
 
   // Start timer for project (calls API)
@@ -493,11 +532,14 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
 
   // Switch project
   Future<void> switchProject(Project project) async {
+    // Set flag to prevent race condition with socket events
+    _isSwitchingProject = true;
     try {
       // Validate that user is checked in from mobile app
       final attendance = _ref.read(currentAttendanceProvider);
       final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
       if (!isCheckedIn) {
+        _isSwitchingProject = false;
         throw Exception('Please check in from mobile app first');
       }
 
@@ -505,7 +547,11 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
 
       // End current project
       if (state != null && state!.projectId.isNotEmpty) {
-        await _api.endTime(state!.projectId);
+        final endSuccess = await _api.endTime(state!.projectId);
+        if (!endSuccess) {
+          _isSwitchingProject = false;
+          throw Exception('Failed to end previous time entry. Please check your connection and try again.');
+        }
       }
 
       // Add to new project if needed
@@ -517,6 +563,7 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
       // Start new project
       final startSuccess = await _api.startTime(project.id);
       if (!startSuccess) {
+        _isSwitchingProject = false;
         throw Exception('Failed to start time on server');
       }
 
@@ -593,6 +640,9 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
     } catch (e, stackTrace) {
       _logger.error('Failed to switch project', e, stackTrace);
       rethrow;
+    } finally {
+      // Always clear the flag when done
+      _isSwitchingProject = false;
     }
   }
 
@@ -607,6 +657,7 @@ class CurrentTimerNotifier extends StateNotifier<ActiveSession?> {
   void dispose() {
     _stopUiRefreshTimer();
     _socketSubscription?.cancel();
+    _attendanceSubscription?.cancel();
     super.dispose();
   }
 }

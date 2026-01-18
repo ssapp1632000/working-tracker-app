@@ -23,22 +23,47 @@ class _WindowControlsState extends State<WindowControls> {
 
   Future<void> _checkFullScreenState() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Check both fullscreen and maximized states
       final isFullScreen = await windowManager.isFullScreen();
+      final isMaximized = await windowManager.isMaximized();
       if (mounted) {
-        setState(() => _isFullScreen = isFullScreen);
+        setState(() => _isFullScreen = isFullScreen || isMaximized);
       }
     }
   }
 
   Future<void> _toggleFullScreen() async {
     final newState = !_isFullScreen;
-    await windowManager.setFullScreen(newState);
-    // Wait briefly for window state to settle (important for both Windows and macOS)
+
+    if (newState) {
+      // Remove size constraints to allow maximize
+      await windowManager.setMinimumSize(const Size(0, 0));
+      await windowManager.setMaximumSize(const Size(9999, 9999));
+      await windowManager.setResizable(true);
+      await Future.delayed(const Duration(milliseconds: 100));
+      // Use maximize instead of setFullScreen for better taskbar compatibility
+      await windowManager.maximize();
+    } else {
+      // Exit maximized state
+      await windowManager.unmaximize();
+      await Future.delayed(const Duration(milliseconds: 150));
+      // Restore original size constraints and position
+      await windowManager.setMinimumSize(const Size(420, 800));
+      await windowManager.setMaximumSize(const Size(420, 800));
+      await windowManager.setResizable(false);
+      await windowManager.setSize(const Size(420, 800));
+      await Future.delayed(const Duration(milliseconds: 50));
+      await windowManager.center();
+    }
+
+    // Wait for window state to settle
     await Future.delayed(const Duration(milliseconds: 100));
-    // Verify actual state from window manager
-    final actualState = await windowManager.isFullScreen();
+
+    // Check actual state (check maximized instead of fullscreen)
+    final isMaximized = await windowManager.isMaximized();
+
     if (mounted) {
-      setState(() => _isFullScreen = actualState);
+      setState(() => _isFullScreen = isMaximized);
     }
   }
 

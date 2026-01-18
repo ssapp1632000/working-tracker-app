@@ -8,20 +8,17 @@ import 'core/theme/app_theme.dart';
 import 'services/storage_service.dart';
 import 'services/timer_service.dart';
 import 'services/logger_service.dart';
-// Email service not needed for API login
-// import 'services/email_service.dart';
 import 'services/auth_service.dart';
 import 'providers/auth_provider.dart';
-import 'providers/window_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'widgets/floating_widget.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final logger = LoggerService();
 
+  // Main window startup
   try {
     logger.info('Starting Work Tracker application...');
 
@@ -35,9 +32,7 @@ void main() async {
     logger.info('Storage service initialized');
 
     // Initialize window manager for desktop
-    if (Platform.isWindows ||
-        Platform.isLinux ||
-        Platform.isMacOS) {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       await windowManager.ensureInitialized();
 
       // Check if user is logged in to set appropriate window size
@@ -50,9 +45,11 @@ void main() async {
 
       WindowOptions windowOptions = WindowOptions(
         size: windowSize,
+        minimumSize: isLoggedIn ? const Size(420, 800) : const Size(420, 400),
         center: true,
         backgroundColor: AppTheme.surfaceColor,
         skipTaskbar: false,
+        // Hide native title bar - we use custom WindowControls widget
         titleBarStyle: TitleBarStyle.hidden,
         title: AppConstants.appName,
       );
@@ -60,15 +57,14 @@ void main() async {
       await windowManager.waitUntilReadyToShow(
         windowOptions,
         () async {
-          if (!isLoggedIn) {
-            await windowManager.setResizable(false);
-          }
+          // All windows are NON-RESIZABLE
+          await windowManager.setResizable(false);
           await windowManager.show();
           await windowManager.focus();
         },
       );
 
-      logger.info('Window manager initialized with size: ${windowSize.width}x${windowSize.height}');
+      logger.info('Window initialized with size: ${windowSize.width}x${windowSize.height}');
     }
 
     // Initialize timer service
@@ -76,13 +72,8 @@ void main() async {
     await timerService.initialize();
     logger.info('Timer service initialized');
 
-    // Email service not needed for API login
-    // final emailService = EmailService();
-    // emailService.initialize();
-    // logger.info('Email service initialized');
-
-    // Run app
-    runApp(const ProviderScope(child: MyApp()));
+    // Run main app
+    runApp(const ProviderScope(child: MainApp()));
   } catch (e, stackTrace) {
     logger.error(
       'Failed to start application',
@@ -93,28 +84,19 @@ void main() async {
   }
 }
 
-class MyApp extends ConsumerWidget {
-  const MyApp({super.key});
+/// Main application widget
+class MainApp extends ConsumerWidget {
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isLoggedIn = ref.watch(isLoggedInProvider);
-    final isFloatingMode = ref.watch(windowModeProvider);
 
     return MaterialApp(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
-      theme: isFloatingMode
-          ? AppTheme.lightTheme.copyWith(
-              scaffoldBackgroundColor: Colors.transparent,
-              canvasColor: Colors.transparent,
-            )
-          : AppTheme.lightTheme,
-      home: isFloatingMode
-          ? const FloatingWidget()
-          : (isLoggedIn
-                ? const DashboardScreen()
-                : const LoginScreen()),
+      theme: AppTheme.lightTheme,
+      home: isLoggedIn ? const DashboardScreen() : const LoginScreen(),
     );
   }
 }

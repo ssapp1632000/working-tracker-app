@@ -12,6 +12,9 @@ final projectSwitchDataProvider = StateProvider<ProjectWithTime?>((ref) => null)
 /// Provider to track if we should return to floating mode after dialog
 final returnToFloatingProvider = StateProvider<bool>((ref) => false);
 
+/// Provider to store data for adding a task (projectId and projectName)
+final addTaskDataProvider = StateProvider<({String projectId, String projectName})?>((ref) => null);
+
 class NavigationRequestNotifier extends StateNotifier<NavigationRequest?> {
   NavigationRequestNotifier() : super(null);
 
@@ -27,6 +30,10 @@ class NavigationRequestNotifier extends StateNotifier<NavigationRequest?> {
     state = NavigationRequest.projectSwitch;
   }
 
+  void requestAddTask() {
+    state = NavigationRequest.addTask;
+  }
+
   void clearRequest() {
     state = null;
   }
@@ -36,4 +43,5 @@ enum NavigationRequest {
   submissionForm,
   checkout,
   projectSwitch,
+  addTask,
 }

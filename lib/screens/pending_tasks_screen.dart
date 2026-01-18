@@ -96,36 +96,46 @@ class _PendingTasksScreenState extends ConsumerState<PendingTasksScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Container(
-          decoration: AppTheme.backgroundDecoration,
-          child: Stack(
-            children: [
-              // Main content
-              SafeArea(
-                child: Column(
-                  children: [
-                    // Header
-                    _buildHeader(pendingState),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            // Use gradient for fullscreen, image for normal mode
+            final isLargeScreen = constraints.maxWidth > 500;
+            final backgroundDecoration = isLargeScreen
+                ? AppTheme.fullscreenBackgroundDecoration
+                : AppTheme.backgroundDecoration;
 
-                    // Content
-                    Expanded(
-                      child: _buildContent(pendingState, canSkip),
+            return Container(
+              decoration: backgroundDecoration,
+              child: Stack(
+                children: [
+                  // Main content
+                  SafeArea(
+                    child: Column(
+                      children: [
+                        // Header
+                        _buildHeader(pendingState),
+
+                        // Content
+                        Expanded(
+                          child: _buildContent(pendingState, canSkip),
+                        ),
+
+                        // Footer
+                        _buildFooter(pendingState, canSkip),
+                      ],
                     ),
+                  ),
 
-                    // Footer
-                    _buildFooter(pendingState, canSkip),
-                  ],
-                ),
+                  // Window controls (top right)
+                  const Positioned(
+                    top: 8,
+                    right: 8,
+                    child: WindowControls(),
+                  ),
+                ],
               ),
-
-              // Window controls (top right)
-              const Positioned(
-                top: 8,
-                right: 8,
-                child: WindowControls(),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

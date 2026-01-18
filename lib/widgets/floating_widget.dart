@@ -690,23 +690,26 @@ class _FloatingWidgetState
                 }
 
                 // Normal layout when window size is correct
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMainRow(
-                      projects,
-                      currentProject,
-                      currentTimer,
-                      activeProjectTime,
-                      sessionTotalTime,
-                    ),
-                    if (_isExpanded)
-                      _buildProjectList(
+                // Use Flexible + SingleChildScrollView to prevent overflow
+                return SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMainRow(
                         projects,
+                        currentProject,
                         currentTimer,
-                        completedDurations,
+                        activeProjectTime,
+                        sessionTotalTime,
                       ),
-                  ],
+                      if (_isExpanded)
+                        _buildProjectList(
+                          projects,
+                          currentTimer,
+                          completedDurations,
+                        ),
+                    ],
+                  ),
                 );
               },
             ),

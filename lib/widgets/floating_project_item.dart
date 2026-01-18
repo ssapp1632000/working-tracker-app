@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
+import '../core/extensions/context_extensions.dart';
 import '../models/task.dart';
+import '../providers/navigation_provider.dart';
+import '../providers/window_provider.dart';
+import 'add_task_dialog.dart';
 
 /// Compact project item for the floating widget dropdown
 /// Matches the mobile app design with project image, name, task badge
@@ -33,6 +37,33 @@ class FloatingProjectItem extends ConsumerStatefulWidget {
 
 class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
   bool _isExpanded = false;
+
+  Future<void> _addTask() async {
+    final isFloating = ref.read(windowModeProvider);
+
+    if (isFloating) {
+      // Store task data and request navigation to add task form
+      ref.read(addTaskDataProvider.notifier).state = (
+        projectId: widget.project.id ?? '',
+        projectName: widget.project.name ?? 'Unknown',
+      );
+      ref.read(navigationRequestProvider.notifier).requestAddTask();
+      // Switch to main mode - dashboard will handle showing the form
+      await ref.read(windowModeProvider.notifier).switchToMain();
+    } else {
+      // Already in main mode, show form directly
+      final result = await AddTaskSheet.show(
+        context: context,
+        projectId: widget.project.id ?? '',
+        projectName: widget.project.name ?? 'Unknown',
+        ref: ref,
+      );
+
+      if (result == true && mounted) {
+        context.showSuccessSnackBar('Task added');
+      }
+    }
+  }
 
   Widget _buildProjectInitial() {
     return Container(
@@ -229,33 +260,29 @@ class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
                     ),
                   ),
 
-                  // Spacing before play button
-                  const SizedBox(width: 8),
-
-                  // Play button - badge style (circular)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: widget.onStartTimer,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: widget.isActive
-                              ? AppTheme.successColor.withValues(alpha: 0.15)
-                              : const Color(0xFF2196F3).withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          widget.isActive ? Icons.pause : Icons.play_arrow,
-                          size: 18,
-                          color: widget.isActive
-                              ? AppTheme.successColor
-                              : const Color(0xFF2196F3),
+                  // Play button - only show for inactive projects
+                  if (!widget.isActive) ...[
+                    const SizedBox(width: 8),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: widget.onStartTimer,
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2196F3).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            size: 18,
+                            color: Color(0xFF2196F3),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -310,6 +337,45 @@ class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
                                   ),
                                 ),
                               ),
+                            const Spacer(),
+                            // Add Task button
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: _addTask,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.3),
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.add,
+                                        size: 12,
+                                        color: Colors.white.withValues(alpha: 0.8),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Add Task',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white.withValues(alpha: 0.8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),

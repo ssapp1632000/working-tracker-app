@@ -82,11 +82,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _onEmailFocusChanged() {
-    if (!_emailFocusNode.hasFocus) {
-      setState(() {
-        _showEmailSuggestions = false;
-      });
-    } else {
+    if (_emailFocusNode.hasFocus) {
       // Select all text when focused (optional UX enhancement)
       if (_emailController.text.isNotEmpty) {
         _emailController.selection = TextSelection(

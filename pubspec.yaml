@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.1+2
 
 environment:
-  sdk: ^3.10.0
+  sdk: ^3.5.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -37,7 +37,6 @@ dependencies:
   # Window Management
   window_manager: ^0.5.1
   screen_retriever: ^0.2.0
-  desktop_multi_window: ^0.3.0
 
   # State Management
   flutter_riverpod: ^2.6.1

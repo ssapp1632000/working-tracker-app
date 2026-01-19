@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
 import '../core/extensions/context_extensions.dart';
-import '../models/task.dart';
+import '../models/report_task.dart';
 import '../providers/navigation_provider.dart';
 import '../providers/window_provider.dart';
 import 'add_task_dialog.dart';
@@ -14,7 +14,7 @@ import 'add_task_dialog.dart';
 class FloatingProjectItem extends ConsumerStatefulWidget {
   final dynamic project;
   final bool isActive;
-  final List<Task> tasks;
+  final List<ReportTask> tasks;
   final Duration displayTime;
   final VoidCallback onTap;
   final VoidCallback onStartTimer;
@@ -404,7 +404,7 @@ class _FloatingProjectItemState extends ConsumerState<FloatingProjectItem> {
     );
   }
 
-  Widget _buildTaskItem(Task task) {
+  Widget _buildTaskItem(ReportTask task) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(

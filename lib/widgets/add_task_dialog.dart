@@ -9,6 +9,7 @@ import '../core/theme/app_theme.dart';
 import '../core/extensions/context_extensions.dart';
 import '../providers/task_provider.dart';
 import '../providers/attendance_provider.dart';
+import '../providers/project_tasks_provider.dart' as ptp;
 import '../services/logger_service.dart';
 import '../services/task_extractor_service.dart';
 import '../services/native_audio_recorder.dart';
@@ -816,6 +817,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         );
       } catch (e) {
         _logger.warning('Could not create local task: $e');
+      }
+
+      // Refresh the project tasks provider to show the new task in the list
+      try {
+        final attendance = ref.read(currentAttendanceProvider);
+        final reportDate = widget.reportDate ?? attendance?.day ?? DateTime.now();
+        final dateStr = '${reportDate.year}-${reportDate.month.toString().padLeft(2, '0')}-${reportDate.day.toString().padLeft(2, '0')}';
+        final tasksKey = ptp.ProjectTasksKey(projectId: widget.projectId, date: dateStr);
+        await ref.read(ptp.projectTasksProvider(tasksKey).notifier).refresh();
+      } catch (e) {
+        _logger.warning('Could not refresh project tasks: $e');
       }
 
       if (mounted) {

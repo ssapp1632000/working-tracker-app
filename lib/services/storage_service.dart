@@ -19,6 +19,7 @@ class StorageService {
   late Box<TimeEntry> _timeEntryBox;
   late Box<Report> _reportBox;
   late Box<Task> _taskBox;
+  late Box<dynamic> _settingsBox;
 
   StorageService._internal();
 
@@ -45,6 +46,7 @@ class StorageService {
       _timeEntryBox = await Hive.openBox<TimeEntry>(AppConstants.hiveBoxTimeEntries);
       _reportBox = await Hive.openBox<Report>(AppConstants.hiveBoxReports);
       _taskBox = await Hive.openBox<Task>(AppConstants.hiveBoxTasks);
+      _settingsBox = await Hive.openBox<dynamic>(AppConstants.hiveBoxSettings);
 
       _logger.info('Hive storage initialized successfully');
     } catch (e, stackTrace) {
@@ -307,6 +309,39 @@ class StorageService {
     }
   }
 
+  // ============================================================================
+  // SETTINGS OPERATIONS (for update check preferences)
+  // ============================================================================
+
+  /// Get the skipped app version (if any)
+  String? getSkippedVersion() {
+    try {
+      return _settingsBox.get('skipped_app_version') as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Set the skipped app version
+  Future<void> setSkippedVersion(String version) async {
+    try {
+      await _settingsBox.put('skipped_app_version', version);
+      _logger.info('Skipped version set: $version');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to set skipped version', e, stackTrace);
+    }
+  }
+
+  /// Clear the skipped app version
+  Future<void> clearSkippedVersion() async {
+    try {
+      await _settingsBox.delete('skipped_app_version');
+      _logger.info('Skipped version cleared');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to clear skipped version', e, stackTrace);
+    }
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     try {
@@ -315,6 +350,7 @@ class StorageService {
       await _timeEntryBox.clear();
       await _reportBox.clear();
       await _taskBox.clear();
+      await _settingsBox.clear();
       _logger.warning('All storage cleared');
     } catch (e, stackTrace) {
       _logger.error('Failed to clear storage', e, stackTrace);
@@ -330,6 +366,7 @@ class StorageService {
       await _timeEntryBox.close();
       await _reportBox.close();
       await _taskBox.close();
+      await _settingsBox.close();
       _logger.info('Storage closed');
     } catch (e, stackTrace) {
       _logger.error('Failed to close storage', e, stackTrace);

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/project.dart';
 import '../models/project_with_time.dart';
 
 /// Provider to handle navigation requests from floating widget
@@ -8,6 +9,9 @@ final navigationRequestProvider = StateNotifierProvider<NavigationRequestNotifie
 
 /// Provider to store data for project switch (the project being switched FROM)
 final projectSwitchDataProvider = StateProvider<ProjectWithTime?>((ref) => null);
+
+/// Provider to store the NEW project to switch to after dialog
+final newProjectSwitchTargetProvider = StateProvider<Project?>((ref) => null);
 
 /// Provider to track if we should return to floating mode after dialog
 final returnToFloatingProvider = StateProvider<bool>((ref) => false);

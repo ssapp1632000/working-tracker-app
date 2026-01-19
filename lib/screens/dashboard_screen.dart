@@ -11,6 +11,8 @@ import '../providers/auth_provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
 import '../providers/task_provider.dart';
+import '../providers/project_tasks_provider.dart' as ptp;
+import '../models/report_task.dart';
 import '../providers/window_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../providers/attendance_provider.dart';
@@ -24,6 +26,8 @@ import '../widgets/floating_widget.dart';
 import '../widgets/add_task_dialog.dart';
 import '../models/project_with_time.dart';
 import '../providers/pending_tasks_provider.dart';
+import '../providers/update_check_provider.dart';
+import '../widgets/update_dialog.dart';
 import 'login_screen.dart';
 import 'submission_form_screen.dart';
 import 'daily_reports_screen.dart';
@@ -44,6 +48,7 @@ class _DashboardScreenState
   bool _hasLoadedAttendance = false;
   bool _hasSyncedTasks = false;
   bool _hasCheckedPendingTasks = false;
+  bool _hasCheckedForUpdates = false;
   bool _isShowingPendingTasksScreen = false;
   bool _isLoading = false;
   bool _isAttendanceExpanded = false;
@@ -63,13 +68,32 @@ class _DashboardScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAttendanceOnce();
       _syncTasksFromApi();
+      // Ensure projects start loading immediately (triggers provider initialization)
+      ref.read(projectsProvider);
+      // Check for active timer entry from server immediately
+      // This ensures floating mode has the active project state even if switched early
+      _checkOpenEntryOnce();
       // Check for pending tasks after a short delay to allow attendance to load
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           _checkPendingTasksOnce();
         }
       });
+      // Check for app updates after a delay to not block startup
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _checkForUpdatesOnce();
+        }
+      });
     });
+  }
+
+  /// Check for app updates once after dashboard loads
+  void _checkForUpdatesOnce() {
+    if (_hasCheckedForUpdates) return;
+    _hasCheckedForUpdates = true;
+    _logger.info('Checking for app updates...');
+    ref.read(updateCheckProvider.notifier).checkForUpdates();
   }
 
   /// Load attendance data once and start polling
@@ -412,12 +436,14 @@ class _DashboardScreenState
   Future<void> _handleProjectSwitchFromFloating() async {
     final shouldReturnToFloating = ref.read(returnToFloatingProvider);
     final projectWithTime = ref.read(projectSwitchDataProvider);
+    final newProject = ref.read(newProjectSwitchTargetProvider);
 
     if (projectWithTime == null) {
       // No project data - just return to floating
       if (shouldReturnToFloating && mounted) {
         ref.read(returnToFloatingProvider.notifier).state = false;
         ref.read(projectSwitchDataProvider.notifier).state = null;
+        ref.read(newProjectSwitchTargetProvider.notifier).state = null;
         await ref.read(windowModeProvider.notifier).switchToFloating();
       }
       return;
@@ -436,12 +462,23 @@ class _DashboardScreenState
     if (result == null || !result.shouldProceed) {
       if (shouldReturnToFloating && mounted) {
         ref.read(returnToFloatingProvider.notifier).state = false;
+        ref.read(newProjectSwitchTargetProvider.notifier).state = null;
         await ref.read(windowModeProvider.notifier).switchToFloating();
       }
       return;
     }
 
-    // Task submitted - return to floating mode (project switch happens in floating widget)
+    // User clicked "Add Task" or "Add Later" - SWITCH TO NEW PROJECT
+    if (newProject != null) {
+      try {
+        await ref.read(currentTimerProvider.notifier).switchProject(newProject);
+      } catch (e) {
+        _logger.error('Failed to switch project', e);
+      }
+      ref.read(newProjectSwitchTargetProvider.notifier).state = null;
+    }
+
+    // Return to floating mode
     if (shouldReturnToFloating && mounted) {
       ref.read(returnToFloatingProvider.notifier).state = false;
       await Future.delayed(const Duration(milliseconds: 300));
@@ -522,6 +559,21 @@ class _DashboardScreenState
         }
       });
     }
+
+    // Listen for update check state changes to show update dialog
+    ref.listen<UpdateCheckState>(updateCheckProvider, (previous, next) {
+      if (next is UpdateCheckAvailable && previous is! UpdateCheckAvailable) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            UpdateDialog.show(
+              context: context,
+              versionInfo: next.versionInfo,
+              isForceUpdate: next.isForceUpdate,
+            );
+          }
+        });
+      }
+    });
 
     // Listen for attendance changes to trigger pending tasks check
     // This handles both initial load and socket check-in events
@@ -1171,7 +1223,27 @@ class _DashboardScreenState
                         itemBuilder: (context, index) {
                           final project = filteredProjects[index];
                           final isActive = currentTimer?.projectId == project.id;
-                          final projectTasks = ref.watch(projectTasksProvider(project.id));
+
+                          // Get current attendance date for filtering tasks
+                          final attendance = ref.watch(currentAttendanceProvider);
+                          final attendanceDate = attendance?.day ?? DateTime.now();
+                          final dateStr = '${attendanceDate.year}-${attendanceDate.month.toString().padLeft(2, '0')}-${attendanceDate.day.toString().padLeft(2, '0')}';
+
+                          // Watch tasks for this project and attendance date
+                          final tasksKey = ptp.ProjectTasksKey(projectId: project.id, date: dateStr);
+                          final projectTasksState = ref.watch(ptp.projectTasksProvider(tasksKey));
+
+                          // Trigger loading if needed
+                          if (projectTasksState is ptp.ProjectTasksInitial) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              ref.read(ptp.projectTasksProvider(tasksKey).notifier).loadTasks();
+                            });
+                          }
+
+                          // Extract tasks list
+                          final projectTasks = projectTasksState is ptp.ProjectTasksLoaded
+                              ? projectTasksState.tasks
+                              : <ReportTask>[];
 
                           // Calculate display time
                           final completedTime = completedDurations[project.id] ?? Duration.zero;

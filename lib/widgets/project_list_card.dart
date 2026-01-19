@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
 import '../models/project.dart';
-import '../models/task.dart';
+import '../models/report_task.dart';
 import '../core/extensions/context_extensions.dart';
 import 'add_task_dialog.dart';
 
@@ -13,7 +13,7 @@ class ProjectListCard extends ConsumerStatefulWidget {
   final Project project;
   final bool isActive;
   final Duration displayTime;
-  final List<Task> tasks;
+  final List<ReportTask> tasks;
   final VoidCallback onStartTimer;
   final bool isLoading;
 
@@ -368,7 +368,7 @@ class _ProjectListCardState extends ConsumerState<ProjectListCard> {
     );
   }
 
-  Widget _buildTaskItem(Task task) {
+  Widget _buildTaskItem(ReportTask task) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(

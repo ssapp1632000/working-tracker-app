@@ -7,9 +7,11 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import '../core/theme/app_theme.dart';
 import '../core/utils/date_time_utils.dart';
+import '../models/project.dart';
 import '../providers/project_provider.dart';
 import '../providers/timer_provider.dart';
-import '../providers/task_provider.dart';
+import '../providers/project_tasks_provider.dart';
+import '../models/report_task.dart';
 import '../providers/window_provider.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/navigation_provider.dart';
@@ -45,6 +47,10 @@ class _FloatingWidgetState
 
   /// Whether the project dropdown list is expanded
   bool _isExpanded = false;
+
+  /// Whether the widget is locked open (user re-hovered during collapse delay)
+  /// When locked, unhover won't trigger collapse until user manually closes dropdown
+  bool _isLockedOpen = false;
 
   /// Timer for checking if window needs to snap back to right edge
   Timer? _snapBackTimer;
@@ -272,6 +278,9 @@ class _FloatingWidgetState
     // Ignore if already hovered
     if (_isHovered) return;
 
+    // Reset lock on fresh hover (widget was collapsed)
+    _isLockedOpen = false;
+
     setState(() {
       _isHovered = true;
       _currentSlideOffset =
@@ -284,21 +293,34 @@ class _FloatingWidgetState
 
   /// Called when mouse exits the widget area
   void _onMouseExit() {
-    // Ignore if dropdown is expanded
-    if (_isExpanded) return;
-
-    // Debounce collapse to prevent flickering
+    // Cancel any pending collapse
     _collapseTimer?.cancel();
+
+    // If locked open (user re-hovered during collapse delay), don't collapse
+    if (_isLockedOpen) return;
+
+    // Use different delay based on whether projects list is open
+    final delay = _isExpanded
+        ? const Duration(seconds: 2)       // 2 seconds when projects list is open
+        : const Duration(milliseconds: 150); // Quick collapse when not expanded
+
     _collapseTimer = Timer(
-      const Duration(milliseconds: 150),
+      delay,
       () {
-        if (_isExpanded || !mounted) return;
+        if (!mounted) return;
+
+        final wasExpanded = _isExpanded;
 
         setState(() {
           _isHovered = false;
-          _currentSlideOffset =
-              FloatingWidgetConstants.slideOutOffset;
+          _isExpanded = false; // Close the projects list if it was open
+          _currentSlideOffset = FloatingWidgetConstants.slideOutOffset;
         });
+
+        // Update window size if dropdown was open
+        if (wasExpanded) {
+          _updateWindowSize(false, 0);
+        }
 
         // Enable click-through when collapsed
         ClickThroughService.setClickThroughEnabled(true);
@@ -308,8 +330,13 @@ class _FloatingWidgetState
 
   /// Toggles the dropdown expansion state
   Future<void> _toggleDropdown(int projectCount) async {
+    final willClose = _isExpanded;
     setState(() {
       _isExpanded = !_isExpanded;
+      // Reset lock when manually closing the dropdown
+      if (willClose) {
+        _isLockedOpen = false;
+      }
     });
     await _updateWindowSize(_isExpanded, projectCount);
   }
@@ -376,6 +403,9 @@ class _FloatingWidgetState
     // Store data for dashboard to use
     ref.read(projectSwitchDataProvider.notifier).state = projectWithTime;
     ref.read(returnToFloatingProvider.notifier).state = true;
+
+    // Store the NEW project to switch to after dialog
+    ref.read(newProjectSwitchTargetProvider.notifier).state = newProject as Project;
 
     // Request navigation to project switch dialog
     ref.read(navigationRequestProvider.notifier).requestProjectSwitch();
@@ -485,20 +515,8 @@ class _FloatingWidgetState
     );
     final completedDurations = ref.watch(completedProjectDurationsProvider);
 
-    // Calculate active project time directly from currentTimer to ensure rebuild on every tick
-    // The timer notifier updates state every second, which triggers this rebuild
-    final Duration activeProjectTime;
-    if (currentTimer != null && currentTimer.isRunning) {
-      activeProjectTime = currentTimer.elapsedDuration;
-    } else {
-      activeProjectTime = Duration.zero;
-    }
-
-    // Calculate session total time (active + completed)
-    Duration sessionTotalTime = activeProjectTime;
-    for (final duration in completedDurations.values) {
-      sessionTotalTime += duration;
-    }
+    // Use the same attendance-based total time as main mode
+    final totalAttendanceTime = ref.watch(liveAttendanceDurationProvider);
 
     // Extract projects list from async state (empty list if loading/error)
     final projects =
@@ -511,8 +529,7 @@ class _FloatingWidgetState
         projects,
         currentProject,
         currentTimer,
-        activeProjectTime,
-        sessionTotalTime,
+        totalAttendanceTime,
         completedDurations,
       ),
     );
@@ -524,8 +541,7 @@ class _FloatingWidgetState
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
-    Duration activeProjectTime,
-    Duration sessionTotalTime,
+    Duration totalAttendanceTime,
     Map<String, Duration> completedDurations,
   ) {
     return GestureDetector(
@@ -573,8 +589,17 @@ class _FloatingWidgetState
               (FloatingWidgetConstants.fixedWidgetWidth -
                   visibleWidth);
 
-          if (isInVisibleArea && !_isHovered) {
-            _onMouseEnter();
+          if (isInVisibleArea) {
+            // If there's a pending collapse timer, cancel it and lock open
+            // This means user re-hovered during the delay - keep it open permanently
+            if (_collapseTimer?.isActive == true) {
+              _collapseTimer?.cancel();
+              _isLockedOpen = true;
+            }
+
+            if (!_isHovered) {
+              _onMouseEnter();
+            }
           }
         },
         onExit: (_) => _onMouseExit(),
@@ -596,8 +621,7 @@ class _FloatingWidgetState
                   projects,
                   currentProject,
                   currentTimer,
-                  activeProjectTime,
-                  sessionTotalTime,
+                  totalAttendanceTime,
                   completedDurations,
                 ),
               ),
@@ -613,8 +637,7 @@ class _FloatingWidgetState
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
-    Duration activeProjectTime,
-    Duration sessionTotalTime,
+    Duration totalAttendanceTime,
     Map<String, Duration> completedDurations,
   ) {
     return Container(
@@ -675,8 +698,7 @@ class _FloatingWidgetState
                           projects,
                           currentProject,
                           currentTimer,
-                          activeProjectTime,
-                          sessionTotalTime,
+                          totalAttendanceTime,
                         ),
                         if (_isExpanded)
                           _buildProjectList(
@@ -699,8 +721,7 @@ class _FloatingWidgetState
                         projects,
                         currentProject,
                         currentTimer,
-                        activeProjectTime,
-                        sessionTotalTime,
+                        totalAttendanceTime,
                       ),
                       if (_isExpanded)
                         _buildProjectList(
@@ -723,8 +744,7 @@ class _FloatingWidgetState
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
-    Duration activeProjectTime,
-    Duration sessionTotalTime,
+    Duration totalAttendanceTime,
   ) {
     // currentTimer is passed to _buildProjectInfo for project name
     return ConstrainedBox(
@@ -741,7 +761,7 @@ class _FloatingWidgetState
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Icon - always visible (left)
-            _buildProjectIcon(currentProject, currentTimer),
+            _buildProjectIcon(currentProject, currentTimer, projects),
             SizedBox(
               width:
                   FloatingWidgetConstants.iconTextSpacing,
@@ -752,8 +772,7 @@ class _FloatingWidgetState
               child: _buildProjectInfo(
                 currentProject,
                 currentTimer,
-                activeProjectTime,
-                sessionTotalTime,
+                totalAttendanceTime,
               ),
             ),
 
@@ -769,14 +788,13 @@ class _FloatingWidgetState
   }
 
   /// Builds the project icon/image for the main row
-  Widget _buildProjectIcon(dynamic currentProject, dynamic currentTimer) {
+  Widget _buildProjectIcon(dynamic currentProject, dynamic currentTimer, List<dynamic> projects) {
     // Get project image from currentProject or find it from projects list
     String? projectImage;
     if (currentProject?.projectImage != null) {
       projectImage = currentProject.projectImage;
     } else if (currentTimer != null) {
-      // Try to find project in projects list to get image
-      final projects = ref.read(projectsProvider).valueOrNull ?? [];
+      // Use passed projects list instead of ref.read() to react to updates
       final project = projects.where((p) => p.id == currentTimer.projectId).firstOrNull;
       projectImage = project?.projectImage;
     }
@@ -824,8 +842,7 @@ class _FloatingWidgetState
   Widget _buildProjectInfo(
     dynamic currentProject,
     dynamic currentTimer,
-    Duration activeProjectTime,
-    Duration sessionTotalTime,
+    Duration totalAttendanceTime,
   ) {
     // Use project name from currentTimer (API source of truth) if available
     final projectName = currentTimer?.projectName ?? currentProject?.name;
@@ -853,9 +870,9 @@ class _FloatingWidgetState
           height: FloatingWidgetConstants.nameTimerSpacing,
         ),
 
-        // Timer display - Shows active project time (current project elapsed)
+        // Timer display - Shows total attendance time (same as main mode)
         Text(
-          DateTimeUtils.formatDuration(activeProjectTime),
+          DateTimeUtils.formatDuration(totalAttendanceTime),
           style: const TextStyle(
             color: AppTheme.textSecondary,
             fontSize: FloatingWidgetConstants.timerFontSize,
@@ -866,20 +883,6 @@ class _FloatingWidgetState
           overflow: TextOverflow.clip,
           maxLines: 1,
         ),
-
-        // Session total time (if different from active project time)
-        if (sessionTotalTime.inSeconds > activeProjectTime.inSeconds)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              'Total: ${DateTimeUtils.formatDuration(sessionTotalTime)}',
-              style: TextStyle(
-                color: AppTheme.textHint,
-                fontSize: 10,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -1014,7 +1017,28 @@ class _FloatingWidgetState
                     itemBuilder: (context, index) {
                       final project = filteredProjects[index];
                       final isActive = currentTimer?.projectId == project.id;
-                      final projectTasks = ref.watch(projectTasksProvider(project.id));
+
+                      // Get current attendance date for filtering tasks
+                      final attendance = ref.watch(currentAttendanceProvider);
+                      final attendanceDate = attendance?.day ?? DateTime.now();
+                      final dateStr = '${attendanceDate.year}-${attendanceDate.month.toString().padLeft(2, '0')}-${attendanceDate.day.toString().padLeft(2, '0')}';
+
+                      // Watch tasks for this project and attendance date
+                      final tasksKey = ProjectTasksKey(projectId: project.id, date: dateStr);
+                      final projectTasksState = ref.watch(projectTasksProvider(tasksKey));
+
+                      // Trigger loading if needed
+                      if (projectTasksState is ProjectTasksInitial) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          ref.read(projectTasksProvider(tasksKey).notifier).loadTasks();
+                        });
+                      }
+
+                      // Extract tasks list
+                      final projectTasks = projectTasksState is ProjectTasksLoaded
+                          ? projectTasksState.tasks
+                          : <ReportTask>[];
+
                       final completedDurations = ref.watch(completedProjectDurationsProvider);
                       final completedTime = completedDurations[project.id] ?? Duration.zero;
 

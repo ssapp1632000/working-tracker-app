@@ -15,7 +15,7 @@ class AuthService {
   factory AuthService() => _instance;
 
   static String get _baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'https://api.ssapp.site/api/v1';
+      dotenv.env['API_BASE_URL'] ?? 'https://app.ssarchitects.ae/api/v1';
 
   final _storage = StorageService();
   final _logger = LoggerService();

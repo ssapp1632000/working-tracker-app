@@ -48,7 +48,7 @@ jobs:
         run: |
           @"
           # API
-          API_BASE_URL=https://api.ssapp.site/api/v1
+          API_BASE_URL=https://app.ssarchitects.ae/api/v1
 
           # GitHub repository for update checks (format: owner/repo)
           GITHUB_REPO=${{ github.repository }}
@@ -63,10 +63,58 @@ jobs:
         if: steps.check_release.outputs.EXISTS == 'false'
         run: flutter build windows --release
 
-      - name: Create ZIP archive
+      - name: Install Inno Setup
+        if: steps.check_release.outputs.EXISTS == 'false'
+        run: choco install innosetup -y
+
+      - name: Create Installer
         if: steps.check_release.outputs.EXISTS == 'false'
         run: |
-          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "SilverStone-v${{ steps.version.outputs.VERSION }}-windows.zip"
+          # Run Inno Setup compiler with version parameter
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.version.outputs.VERSION }} installer\silver_stone.iss
+        shell: pwsh
+
+      - name: Update AppCast XML
+        if: steps.check_release.outputs.EXISTS == 'false'
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $date = Get-Date -Format "ddd, dd MMM yyyy HH:mm:ss +0000"
+          $repo = "${{ github.repository }}"
+
+          $appcastContent = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Silver Stone Updates</title>
+              <description>Latest updates for Silver Stone desktop app</description>
+              <language>en</language>
+              <item>
+                <title>Version $version</title>
+                <sparkle:version>$version</sparkle:version>
+                <sparkle:shortVersionString>$version</sparkle:shortVersionString>
+                <pubDate>$date</pubDate>
+                <enclosure
+                  url="https://github.com/$repo/releases/download/v$version/SilverStone-Setup-$version.exe"
+                  sparkle:version="$version"
+                  length="0"
+                  type="application/octet-stream"/>
+                <sparkle:releaseNotesLink>https://github.com/$repo/releases/tag/v$version</sparkle:releaseNotesLink>
+              </item>
+            </channel>
+          </rss>
+          "@
+
+          $appcastContent | Out-File -FilePath docs\appcast.xml -Encoding utf8
+        shell: pwsh
+
+      - name: Commit AppCast Update
+        if: steps.check_release.outputs.EXISTS == 'false'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/appcast.xml
+          git diff --staged --quiet || git commit -m "chore: update appcast.xml for v${{ steps.version.outputs.VERSION }}"
+          git push
         shell: pwsh
 
       - name: Create Release
@@ -80,12 +128,15 @@ jobs:
 
             Automated release from main branch.
 
-            ### Download
-            1. Download the ZIP file below
-            2. Extract to a folder
-            3. Run `silver_stone.exe`
+            ### Installation
+            1. Download `SilverStone-Setup-${{ steps.version.outputs.VERSION }}.exe` below
+            2. Run the installer
+            3. Follow the installation wizard
+
+            ### Auto-Update
+            If you already have Silver Stone installed, the app will automatically notify you of this update.
           files: |
-            SilverStone-v${{ steps.version.outputs.VERSION }}-windows.zip
+            Output/SilverStone-Setup-${{ steps.version.outputs.VERSION }}.exe
           draft: false
           prerelease: false
         env:

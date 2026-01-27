@@ -18,7 +18,7 @@ class ReportSubmissionService {
 
   // API Configuration - loaded from .env
   static String get _apiUrl =>
-      '${dotenv.env['API_BASE_URL'] ?? 'https://api.ssapp.site/api/v1'}/reports/daily-reports';
+      '${dotenv.env['API_BASE_URL'] ?? 'https://app.ssarchitects.ae/api/v1'}/reports/daily-reports';
 
   ReportSubmissionService._internal();
 

@@ -28,7 +28,7 @@ class ApiService {
 
   // API Configuration - loaded from .env
   static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'https://api.ssapp.site/api/v1';
+      dotenv.env['API_BASE_URL'] ?? 'https://app.ssarchitects.ae/api/v1';
 
   ApiService._internal();
 

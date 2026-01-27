@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +25,7 @@ import '../widgets/floating_widget.dart';
 import '../widgets/add_task_dialog.dart';
 import '../models/project_with_time.dart';
 import '../providers/pending_tasks_provider.dart';
-import '../providers/update_check_provider.dart';
+import '../services/auto_update_service.dart';
 import '../widgets/update_dialog.dart';
 import 'login_screen.dart';
 import 'submission_form_screen.dart';
@@ -58,6 +57,7 @@ class _DashboardScreenState
   final _windowService = WindowService();
   final _api = ApiService();
   final _logger = LoggerService();
+  final _autoUpdateService = AutoUpdateService();
   AttendanceNotifier? _attendanceNotifier;
 
   @override
@@ -89,11 +89,30 @@ class _DashboardScreenState
   }
 
   /// Check for app updates once after dashboard loads
-  void _checkForUpdatesOnce() {
+  void _checkForUpdatesOnce() async {
     if (_hasCheckedForUpdates) return;
     _hasCheckedForUpdates = true;
     _logger.info('Checking for app updates...');
-    ref.read(updateCheckProvider.notifier).checkForUpdates();
+
+    // Initialize and check for updates using auto_updater
+    await _autoUpdateService.initialize();
+
+    // Set up callback to show mandatory update dialog
+    _autoUpdateService.onUpdateAvailable = (appcastItem) {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            UpdateDialog.show(
+              context: context,
+              updateInfo: appcastItem,
+            );
+          }
+        });
+      }
+    };
+
+    // Check for updates
+    await _autoUpdateService.checkForUpdates();
   }
 
   /// Load attendance data once and start polling
@@ -559,21 +578,6 @@ class _DashboardScreenState
         }
       });
     }
-
-    // Listen for update check state changes to show update dialog
-    ref.listen<UpdateCheckState>(updateCheckProvider, (previous, next) {
-      if (next is UpdateCheckAvailable && previous is! UpdateCheckAvailable) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            UpdateDialog.show(
-              context: context,
-              versionInfo: next.versionInfo,
-              isForceUpdate: next.isForceUpdate,
-            );
-          }
-        });
-      }
-    });
 
     // Listen for attendance changes to trigger pending tasks check
     // This handles both initial load and socket check-in events

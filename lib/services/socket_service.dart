@@ -1,9 +1,19 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/attendance_event.dart';
 import '../models/time_entry_event.dart';
 import 'logger_service.dart';
 import 'storage_service.dart';
+
+/// Custom HttpOverrides to bypass SSL certificate verification for Socket.IO
+class _CustomHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  }
+}
 
 /// Service for managing Socket.IO connection for real-time time entry updates
 class SocketService {
@@ -70,6 +80,10 @@ class SocketService {
 
     try {
       _logger.info('Connecting to Socket.IO server...');
+
+      // Set custom HttpOverrides to bypass SSL certificate verification
+      // This affects all HttpClient instances including Socket.IO's internal one
+      HttpOverrides.global = _CustomHttpOverrides();
 
       _socket = io.io(
         _socketUrl,

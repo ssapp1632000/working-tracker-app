@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/app_version_info.dart';
 import 'logger_service.dart';
@@ -13,6 +15,15 @@ class UpdateCheckService {
 
   final _logger = LoggerService();
   final _storage = StorageService();
+
+  // Custom HTTP client that bypasses SSL certificate verification
+  late final http.Client _httpClient = _createHttpClient();
+
+  http.Client _createHttpClient() {
+    final httpClient = HttpClient()
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    return IOClient(httpClient);
+  }
 
   UpdateCheckService._internal();
 
@@ -32,7 +43,7 @@ class UpdateCheckService {
       final url = 'https://api.github.com/repos/$repo/releases/latest';
       _logger.info('Checking for updates from: $url');
 
-      final response = await http.get(
+      final response = await _httpClient.get(
         Uri.parse(url),
         headers: {
           'Accept': 'application/vnd.github.v3+json',

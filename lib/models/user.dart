@@ -113,8 +113,12 @@ class User extends HiveObject {
       createdAt: DateTime.now(),
       lastLoginAt: DateTime.now(),
       role: user['role'] as String?,
-      permissions: (user['permissions'] as List<dynamic>?)?.cast<String>(),
-      additionalPermissions: (user['additionalPermissions'] as List<dynamic>?)?.cast<String>(),
+      permissions: (user['permissions'] as List<dynamic>?)
+          ?.whereType<String>()
+          .toList(),
+      additionalPermissions: (user['additionalPermissions'] as List<dynamic>?)
+          ?.whereType<String>()
+          .toList(),
       refreshToken: json['refreshToken'] as String?,
       avatar: user['avatar'] as String?,
     );
@@ -142,8 +146,12 @@ class User extends HiveObject {
           ? DateTime.parse(json['lastLoginAt'] as String)
           : null,
       role: json['role'] as String?,
-      permissions: (json['permissions'] as List<dynamic>?)?.cast<String>(),
-      additionalPermissions: (json['additionalPermissions'] as List<dynamic>?)?.cast<String>(),
+      permissions: (json['permissions'] as List<dynamic>?)
+          ?.whereType<String>()
+          .toList(),
+      additionalPermissions: (json['additionalPermissions'] as List<dynamic>?)
+          ?.whereType<String>()
+          .toList(),
       refreshToken: json['refreshToken'] as String?,
       avatar: json['avatar'] as String?,
     );

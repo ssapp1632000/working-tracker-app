@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import '../models/user.dart';
 import 'storage_service.dart';
 import 'logger_service.dart';
@@ -20,6 +22,15 @@ class AuthService {
   final _storage = StorageService();
   final _logger = LoggerService();
   final _socketService = SocketService();
+
+  // Custom HTTP client that bypasses SSL certificate verification
+  late final http.Client _httpClient = _createHttpClient();
+
+  http.Client _createHttpClient() {
+    final httpClient = HttpClient()
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    return IOClient(httpClient);
+  }
 
   // Stream controller for force logout events
   final _forceLogoutController = StreamController<void>.broadcast();
@@ -44,7 +55,7 @@ class AuthService {
         throw Exception('Please enter a valid email address');
       }
 
-      final response = await http.post(
+      final response = await _httpClient.post(
         Uri.parse('$_baseUrl/auth/login'),
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +95,7 @@ class AuthService {
         throw Exception('Please enter a valid 6-digit OTP');
       }
 
-      final response = await http.post(
+      final response = await _httpClient.post(
         Uri.parse('$_baseUrl/auth/verify-login-otp'),
         headers: {
           'Content-Type': 'application/json',
@@ -221,7 +232,7 @@ class AuthService {
 
       _logger.info('Refreshing access token...');
 
-      final response = await http.post(
+      final response = await _httpClient.post(
         Uri.parse('$_baseUrl/auth/refresh-token'),
         headers: {
           'Content-Type': 'application/json',
@@ -252,8 +263,8 @@ class AuthService {
             name: fullName ?? currentUser.name,
             email: userData?['email'] as String? ?? currentUser.email,
             role: userData?['role'] as String? ?? currentUser.role,
-            permissions: (userData?['permissions'] as List<dynamic>?)?.cast<String>() ?? currentUser.permissions,
-            additionalPermissions: (userData?['additionalPermissions'] as List<dynamic>?)?.cast<String>() ?? currentUser.additionalPermissions,
+            permissions: (userData?['permissions'] as List<dynamic>?)?.whereType<String>().toList() ?? currentUser.permissions,
+            additionalPermissions: (userData?['additionalPermissions'] as List<dynamic>?)?.whereType<String>().toList() ?? currentUser.additionalPermissions,
           );
           await _storage.saveUser(updatedUser);
           _logger.info('Access token refreshed successfully, user data updated');
@@ -309,7 +320,7 @@ class AuthService {
       if (currentUser != null && currentUser.refreshToken != null && currentUser.token != null) {
         try {
           // Call logout API
-          final response = await http.post(
+          final response = await _httpClient.post(
             Uri.parse('$_baseUrl/auth/logout'),
             headers: {
               'Content-Type': 'application/json',
@@ -352,7 +363,7 @@ class AuthService {
 
       _logger.info('Syncing user profile from API...');
 
-      final response = await http.get(
+      final response = await _httpClient.get(
         Uri.parse('$_baseUrl/users/me'),
         headers: {
           'Content-Type': 'application/json',
@@ -380,8 +391,8 @@ class AuthService {
               name: fullName ?? currentUser.name,
               email: userData['email'] as String? ?? currentUser.email,
               role: userData['role'] as String? ?? currentUser.role,
-              permissions: (userData['permissions'] as List<dynamic>?)?.cast<String>() ?? currentUser.permissions,
-              additionalPermissions: (userData['additionalPermissions'] as List<dynamic>?)?.cast<String>() ?? currentUser.additionalPermissions,
+              permissions: (userData['permissions'] as List<dynamic>?)?.whereType<String>().toList() ?? currentUser.permissions,
+              additionalPermissions: (userData['additionalPermissions'] as List<dynamic>?)?.whereType<String>().toList() ?? currentUser.additionalPermissions,
             );
             await _storage.saveUser(updatedUser);
             _logger.info('User profile synced successfully: ${updatedUser.name}');

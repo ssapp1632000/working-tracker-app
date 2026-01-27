@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'logger_service.dart';
 import 'storage_service.dart';
 import 'token_refresh_coordinator.dart';
@@ -25,6 +26,16 @@ class ApiService {
   final _logger = LoggerService();
   final _storage = StorageService();
   final _tokenCoordinator = TokenRefreshCoordinator();
+
+  // Custom HTTP client that bypasses SSL certificate verification
+  // This is needed when the server has certificate chain issues
+  late final http.Client _httpClient = _createHttpClient();
+
+  http.Client _createHttpClient() {
+    final httpClient = HttpClient()
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    return IOClient(httpClient);
+  }
 
   // API Configuration - loaded from .env
   static String get baseUrl =>
@@ -65,27 +76,27 @@ class ApiService {
 
     switch (method.toUpperCase()) {
       case 'GET':
-        response = await http.get(uri, headers: _headers);
+        response = await _httpClient.get(uri, headers: _headers);
         break;
       case 'POST':
-        response = await http.post(
+        response = await _httpClient.post(
           uri,
           headers: _headers,
           body: body != null ? json.encode(body) : null,
         );
         break;
       case 'PUT':
-        response = await http.put(
+        response = await _httpClient.put(
           uri,
           headers: _headers,
           body: body != null ? json.encode(body) : null,
         );
         break;
       case 'DELETE':
-        response = await http.delete(uri, headers: _headers);
+        response = await _httpClient.delete(uri, headers: _headers);
         break;
       case 'PATCH':
-        response = await http.patch(
+        response = await _httpClient.patch(
           uri,
           headers: _headers,
           body: body != null ? json.encode(body) : null,
@@ -139,7 +150,7 @@ class ApiService {
         'Fetching info from API${filter != null ? " (filter: $filter)" : ""}...',
       );
 
-      final response = await http.get(
+      final response = await _httpClient.get(
         uriWithParams,
         headers: _headers,
       );
@@ -305,7 +316,7 @@ class ApiService {
       _logger.info('Starting time for project: $projectId');
 
       final uri = Uri.parse('$baseUrl/projects/time-entries/start-time/$projectId');
-      final response = await http.post(uri, headers: _headers);
+      final response = await _httpClient.post(uri, headers: _headers);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _logger.info('Time started successfully for project: $projectId');
@@ -328,7 +339,7 @@ class ApiService {
 
       // Try POST to /end-time (without projectId - ends current open entry)
       var uri = Uri.parse('$baseUrl/projects/time-entries/end-time');
-      var response = await http.post(uri, headers: _headers);
+      var response = await _httpClient.post(uri, headers: _headers);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _logger.info('Time ended successfully (POST /end-time)');
@@ -343,7 +354,7 @@ class ApiService {
 
       // Try PUT to /end-time/{projectId}
       uri = Uri.parse('$baseUrl/projects/time-entries/end-time/$projectId');
-      response = await http.put(uri, headers: _headers);
+      response = await _httpClient.put(uri, headers: _headers);
 
       if (response.statusCode == 200) {
         _logger.info('Time ended successfully (PUT /end-time/{projectId})');
@@ -357,7 +368,7 @@ class ApiService {
       }
 
       // Try POST to /end-time/{projectId}
-      response = await http.post(uri, headers: _headers);
+      response = await _httpClient.post(uri, headers: _headers);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _logger.info('Time ended successfully (POST /end-time/{projectId})');
@@ -399,7 +410,7 @@ class ApiService {
       _logger.info('Adding myself to project: $projectId');
 
       final uri = Uri.parse('$baseUrl/projects/addMyself/$projectId');
-      final response = await http.post(uri, headers: _headers);
+      final response = await _httpClient.post(uri, headers: _headers);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _logger.info('Added to project successfully: $projectId');
@@ -435,7 +446,7 @@ class ApiService {
       final uri = Uri.parse('$baseUrl/projects/time-entries/history').replace(
         queryParameters: {'projectId': projectId, 'limit': '1'},
       );
-      final response = await http.get(uri, headers: _headers);
+      final response = await _httpClient.get(uri, headers: _headers);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -465,7 +476,7 @@ class ApiService {
       final uri = Uri.parse('$baseUrl/projects/time-entries/history').replace(
         queryParameters: {'projectId': projectId},
       );
-      final response = await http.get(uri, headers: _headers);
+      final response = await _httpClient.get(uri, headers: _headers);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -1008,8 +1019,8 @@ class ApiService {
         _logger.info('Added ${attachments.length} attachments total');
       }
 
-      // Send request
-      final streamedResponse = await request.send();
+      // Send request using custom client to bypass SSL verification
+      final streamedResponse = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
 
       _logger.info('Create daily report response: ${response.statusCode}');
@@ -1338,8 +1349,8 @@ class ApiService {
         }
       }
 
-      // Send request
-      final streamedResponse = await request.send();
+      // Send request using custom client to bypass SSL verification
+      final streamedResponse = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200 || response.statusCode == 201) {

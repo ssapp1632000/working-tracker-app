@@ -5,16 +5,16 @@
     <description>Latest updates for Silver Stone desktop app</description>
     <language>en</language>
     <item>
-      <title>Version 1.0.5</title>
-      <sparkle:version>1.0.5</sparkle:version>
-      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
-      <pubDate>Tue, 27 Jan 2026 11:55:16 +0000</pubDate>
+      <title>Version 1.0.6</title>
+      <sparkle:version>1.0.6</sparkle:version>
+      <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
+      <pubDate>Tue, 27 Jan 2026 12:08:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/ssapp1632000/working-tracker-app/releases/download/v1.0.5/SilverStone-Setup-1.0.5.exe"
-        sparkle:version="1.0.5"
+        url="https://github.com/ssapp1632000/working-tracker-app/releases/download/v1.0.6/SilverStone-Setup-1.0.6.exe"
+        sparkle:version="1.0.6"
         length="0"
         type="application/octet-stream"/>
-      <sparkle:releaseNotesLink>https://github.com/ssapp1632000/working-tracker-app/releases/tag/v1.0.5</sparkle:releaseNotesLink>
+      <sparkle:releaseNotesLink>https://github.com/ssapp1632000/working-tracker-app/releases/tag/v1.0.6</sparkle:releaseNotesLink>
     </item>
   </channel>
 </rss>

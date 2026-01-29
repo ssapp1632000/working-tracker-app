@@ -25,6 +25,7 @@ import '../widgets/floating_widget.dart';
 import '../widgets/add_task_dialog.dart';
 import '../models/project_with_time.dart';
 import '../providers/pending_tasks_provider.dart';
+import '../providers/socket_provider.dart';
 import '../services/update_check_service.dart';
 import '../widgets/update_dialog.dart';
 import 'login_screen.dart';
@@ -66,6 +67,8 @@ class _DashboardScreenState
     _windowService.setDashboardWindowSize();
     // Load attendance on init
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Initialize task event handler for real-time task updates
+      ref.read(taskEventHandlerProvider).initialize();
       _loadAttendanceOnce();
       _syncTasksFromApi();
       // Ensure projects start loading immediately (triggers provider initialization)

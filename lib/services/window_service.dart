@@ -127,9 +127,13 @@ class WindowService {
     if (!_isDesktop()) return;
 
     try {
-      // Exit fullscreen if active before switching to floating mode
+      // Exit fullscreen or maximized state before switching to floating mode
       if (await windowManager.isFullScreen()) {
         await windowManager.setFullScreen(false);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      if (await windowManager.isMaximized()) {
+        await windowManager.unmaximize();
         await Future.delayed(const Duration(milliseconds: 150));
       }
 

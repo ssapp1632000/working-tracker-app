@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/attendance_event.dart';
+import '../models/task_event.dart';
 import '../models/time_entry_event.dart';
 import 'logger_service.dart';
 import 'storage_service.dart';
@@ -36,6 +37,9 @@ class SocketService {
   // Stream controller for broadcasting attendance events
   final _attendanceEventController = StreamController<AttendanceEvent>.broadcast();
 
+  // Stream controller for broadcasting task events
+  final _taskEventController = StreamController<TaskEvent>.broadcast();
+
   // Stream controller for token error events (for triggering token refresh)
   final _tokenErrorController = StreamController<String>.broadcast();
 
@@ -46,6 +50,9 @@ class SocketService {
 
   /// Stream of attendance events for providers to listen to
   Stream<AttendanceEvent> get attendanceEventStream => _attendanceEventController.stream;
+
+  /// Stream of task events for providers to listen to
+  Stream<TaskEvent> get taskEventStream => _taskEventController.stream;
 
   /// Stream of token error events for triggering token refresh
   Stream<String> get tokenErrorStream => _tokenErrorController.stream;
@@ -250,6 +257,49 @@ class SocketService {
         _logger.error('Failed to parse attendance:checkedOut event', e, stackTrace);
       }
     });
+
+    // Task events
+    _socket!.on('task:created', (data) {
+      _logger.info('Received task:created event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = TaskEvent.fromCreatedPayload(payload);
+        _taskEventController.add(event);
+        _logger.info('Processed task:created for project: ${event.projectId}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse task:created event', e, stackTrace);
+      }
+    });
+
+    _socket!.on('task:updated', (data) {
+      _logger.info('Received task:updated event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = TaskEvent.fromUpdatedPayload(payload);
+        _taskEventController.add(event);
+        _logger.info('Processed task:updated for task: ${event.id}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse task:updated event', e, stackTrace);
+      }
+    });
+
+    _socket!.on('task:deleted', (data) {
+      _logger.info('Received task:deleted event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = TaskEvent.fromDeletedPayload(payload);
+        _taskEventController.add(event);
+        _logger.info('Processed task:deleted for task: ${event.id}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse task:deleted event', e, stackTrace);
+      }
+    });
   }
 
   /// Disconnect from the Socket.IO server
@@ -276,6 +326,7 @@ class SocketService {
     disconnect();
     _eventController.close();
     _attendanceEventController.close();
+    _taskEventController.close();
     _tokenErrorController.close();
   }
 }

@@ -48,10 +48,6 @@ class _FloatingWidgetState
   /// Whether the project dropdown list is expanded
   bool _isExpanded = false;
 
-  /// Whether the widget is locked open (user re-hovered during collapse delay)
-  /// When locked, unhover won't trigger collapse until user manually closes dropdown
-  bool _isLockedOpen = false;
-
   /// Timer for checking if window needs to snap back to right edge
   Timer? _snapBackTimer;
 
@@ -278,9 +274,6 @@ class _FloatingWidgetState
     // Ignore if already hovered
     if (_isHovered) return;
 
-    // Reset lock on fresh hover (widget was collapsed)
-    _isLockedOpen = false;
-
     setState(() {
       _isHovered = true;
       _currentSlideOffset =
@@ -293,16 +286,7 @@ class _FloatingWidgetState
 
   /// Called when mouse exits the widget area
   void _onMouseExit() {
-    // Cancel any pending collapse
-    _collapseTimer?.cancel();
-
-    // If locked open (user re-hovered during collapse delay), don't collapse
-    if (_isLockedOpen) return;
-
-    // Use different delay based on whether projects list is open
-    final delay = _isExpanded
-        ? const Duration(seconds: 2)       // 2 seconds when projects list is open
-        : const Duration(milliseconds: 150); // Quick collapse when not expanded
+    const delay = Duration(seconds: 2);
 
     _collapseTimer = Timer(
       delay,
@@ -330,13 +314,8 @@ class _FloatingWidgetState
 
   /// Toggles the dropdown expansion state
   Future<void> _toggleDropdown(int projectCount) async {
-    final willClose = _isExpanded;
     setState(() {
       _isExpanded = !_isExpanded;
-      // Reset lock when manually closing the dropdown
-      if (willClose) {
-        _isLockedOpen = false;
-      }
     });
     await _updateWindowSize(_isExpanded, projectCount);
   }
@@ -590,12 +569,8 @@ class _FloatingWidgetState
                   visibleWidth);
 
           if (isInVisibleArea) {
-            // If there's a pending collapse timer, cancel it and lock open
-            // This means user re-hovered during the delay - keep it open permanently
-            if (_collapseTimer?.isActive == true) {
-              _collapseTimer?.cancel();
-              _isLockedOpen = true;
-            }
+            // Cancel any pending collapse timer if user re-hovers
+            _collapseTimer?.cancel();
 
             if (!_isHovered) {
               _onMouseEnter();

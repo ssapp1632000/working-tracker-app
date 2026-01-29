@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 import '../services/window_service.dart';
 import '../services/logger_service.dart';
+import '../services/system_tray_service.dart';
 
 // Window service provider
 final windowServiceProvider = Provider<WindowService>((ref) {
@@ -19,11 +22,49 @@ class WindowModeNotifier extends StateNotifier<bool> {
   final Ref _ref;
   late final WindowService _windowService;
   late final LoggerService _logger;
+  late final SystemTrayService _systemTray;
 
   // State: true = floating mode, false = main mode
   WindowModeNotifier(this._ref) : super(false) {
     _windowService = _ref.read(windowServiceProvider);
     _logger = LoggerService();
+    _systemTray = SystemTrayService();
+    _setupTrayCallbacks();
+  }
+
+  void _setupTrayCallbacks() {
+    _systemTray.onShowWindow = () async {
+      await windowManager.show();
+      await windowManager.focus();
+    };
+    _systemTray.onSwitchToMain = () async {
+      await switchToMain();
+    };
+    _systemTray.onExit = () async {
+      await windowManager.close();
+    };
+  }
+
+  Future<void> _showSystemTray() async {
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+
+    try {
+      await _systemTray.init();
+      _logger.info('System tray shown for floating mode');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to show system tray', e, stackTrace);
+    }
+  }
+
+  Future<void> _hideSystemTray() async {
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+
+    try {
+      await _systemTray.destroy();
+      _logger.info('System tray hidden for main mode');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to hide system tray', e, stackTrace);
+    }
   }
 
   /// Switch to floating mode
@@ -37,6 +78,9 @@ class WindowModeNotifier extends StateNotifier<bool> {
       _ref.read(floatingWindowOpenProvider.notifier).state = true;
 
       await _windowService.switchToFloatingMode();
+
+      // Show system tray icon (since app is hidden from taskbar in floating mode)
+      await _showSystemTray();
 
       _logger.info('Switched to floating mode');
     } catch (e, stackTrace) {
@@ -54,6 +98,9 @@ class WindowModeNotifier extends StateNotifier<bool> {
   Future<void> switchToMain() async {
     try {
       _logger.info('Switching to main mode...');
+
+      // Hide system tray icon (app will be visible in taskbar)
+      await _hideSystemTray();
 
       // First restore window size, then update state
       // This prevents FloatingWidget from rendering with large window during transition

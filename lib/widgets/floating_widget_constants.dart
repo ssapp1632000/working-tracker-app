@@ -17,8 +17,8 @@ class FloatingWidgetConstants {
   static const double expandedWidth = 280.0;
 
   /// Base height of the window (without dropdown list)
-  /// Calculated as: mainRowHeight (70) + borders/shadows (10) = 80px minimum
-  static const double baseHeight = 80.0;
+  /// New layout: sessionHeader (32) + divider/spacing (13) + checkInOut (44) + divider/spacing (13) + projectFooter (32) + divider (1) + padding (12) = 147px
+  static const double baseHeight = 150.0;
 
   /// Maximum height for the project dropdown list
   static const double maxDropdownHeight = 300.0;
@@ -168,4 +168,73 @@ class FloatingWidgetConstants {
 
   /// Margin for active indicator
   static const double activeIndicatorMargin = 8.0;
+
+  // ============================================================================
+  // COMPACT TIME DISPLAY (Dashboard-style in floating widget)
+  // ============================================================================
+
+  /// Height for the project row (icon, name, controls)
+  static const double projectRowHeight = 40.0;
+
+  /// Height for the session header row (session time + controls)
+  static const double sessionHeaderRowHeight = 32.0;
+
+  /// Height for the project footer row (icon + name + time badge)
+  static const double projectFooterRowHeight = 32.0;
+
+  /// Height for the check-in/check-out row
+  static const double checkInOutRowHeight = 44.0;
+
+  /// Height for the project time row (smaller when inline with project)
+  static const double projectTimeRowHeight = 24.0;
+
+  /// Clock icon size in session duration row
+  static const double compactClockIconSize = 20.0;
+
+  /// Font size for duration (hours/minutes)
+  static const double compactDurationFontSize = 18.0;
+
+  /// Font size for seconds
+  static const double compactSecondsFontSize = 12.0;
+
+  /// Font size for check-in/check-out labels
+  static const double compactLabelFontSize = 10.0;
+
+  /// Font size for check-in/check-out time values
+  static const double compactTimeFontSize = 14.0;
+
+  /// Icon size for check-in/check-out and project timer
+  static const double compactBadgeIconSize = 13.0;
+
+  /// Font size for project timer badge
+  static const double compactBadgeFontSize = 12.0;
+
+  // ============================================================================
+  // ATTENDANCE CARD (Dashboard-style container)
+  // ============================================================================
+
+  /// Padding inside the attendance card
+  static const double attendanceCardPadding = 10.0;
+
+  /// Border radius for the attendance card
+  static const double attendanceCardRadius = 8.0;
+
+  /// Horizontal margin for the attendance card
+  static const double attendanceCardMargin = 8.0;
+
+  // ============================================================================
+  // GENERIC CONTAINER STYLING (for project info and other containers)
+  // ============================================================================
+
+  /// Padding inside containers (reduced for compact design)
+  static const double containerPadding = 6.0;
+
+  /// Border radius for containers
+  static const double containerRadius = 8.0;
+
+  /// Horizontal margin for containers
+  static const double containerMargin = 8.0;
+
+  /// Spacing between containers
+  static const double containerSpacing = 8.0;
 }

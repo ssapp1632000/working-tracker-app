@@ -714,50 +714,203 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds the main row containing icon, project info, and controls
+  /// Builds the main content with reorganized layout
   Widget _buildMainRow(
     List<dynamic> projects,
     dynamic currentProject,
     dynamic currentTimer,
     Duration totalAttendanceTime,
   ) {
-    // currentTimer is passed to _buildProjectInfo for project name
-    return ConstrainedBox(
-      constraints: const BoxConstraints(
-        minHeight: FloatingWidgetConstants.mainRowHeight,
+    return Container(
+      margin: EdgeInsets.symmetric(
+        horizontal: FloatingWidgetConstants.containerMargin,
+        vertical: 4.0,
       ),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: FloatingWidgetConstants
-              .expandedHorizontalPadding,
-          vertical: FloatingWidgetConstants.verticalPadding,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Icon - always visible (left)
-            _buildProjectIcon(currentProject, currentTimer, projects),
-            SizedBox(
-              width:
-                  FloatingWidgetConstants.iconTextSpacing,
-            ),
+      padding: EdgeInsets.all(FloatingWidgetConstants.containerPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Top: Session time + controls
+          _buildSessionHeaderRow(totalAttendanceTime, projects, currentProject, currentTimer),
 
-            // Project info - centered in the middle
-            Expanded(
-              child: _buildProjectInfo(
-                currentProject,
-                currentTimer,
-                totalAttendanceTime,
+          const SizedBox(height: 6),
+          const Divider(height: 1, color: AppTheme.borderColor),
+          const SizedBox(height: 6),
+
+          // Middle: Check-in/out
+          _buildCheckInOutRow(),
+
+          const SizedBox(height: 6),
+          const Divider(height: 1, color: AppTheme.borderColor),
+          const SizedBox(height: 12),
+
+          // Bottom: Project info + time
+          _buildProjectFooterRow(projects, currentProject, currentTimer),
+
+        ],
+      ),
+    );
+  }
+
+  /// Builds the session header row (session time + controls)
+  Widget _buildSessionHeaderRow(
+    Duration totalAttendanceTime,
+    List<dynamic> projects,
+    dynamic currentProject,
+    dynamic currentTimer,
+  ) {
+
+    final hours = totalAttendanceTime.inHours;
+    final minutes = totalAttendanceTime.inMinutes.remainder(60);
+    final seconds = totalAttendanceTime.inSeconds.remainder(60);
+    final timeColor =  AppTheme.textPrimary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Session duration
+          Row(
+            children: [
+              Icon(
+                Icons.access_time,
+                size: FloatingWidgetConstants.compactClockIconSize,
+                color: timeColor,
               ),
-            ),
+              const SizedBox(width: 6),
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    color: timeColor,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '${hours}h ${minutes.toString().padLeft(2, '0')}m ',
+                      style: TextStyle(
+                        fontSize: FloatingWidgetConstants.compactDurationFontSize,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '${seconds.toString().padLeft(2, '0')}s',
+                      style: TextStyle(
+                        fontSize: FloatingWidgetConstants.compactSecondsFontSize,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
 
-            // Attendance status indicator (read-only)
-            _buildAttendanceStatusIndicator(),
-            const SizedBox(width: 4),
-            _buildDropdownArrow(projects),
-            _buildMaximizeButton(),
-          ],
-        ),
+          // Right: Controls
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAttendanceStatusIndicator(),
+              const SizedBox(width: 4),
+              _buildDropdownArrow(projects),
+              _buildMaximizeButton(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds the project time badge (for footer row)
+  Widget _buildProjectTimeBadge(dynamic currentTimer) {
+    final completedDurations = ref.watch(completedProjectDurationsProvider);
+    final hasActiveTimer = currentTimer != null;
+
+    // Calculate project time
+    Duration projectTime = Duration.zero;
+    if (currentTimer != null) {
+      final completedTime = completedDurations[currentTimer.projectId] ?? Duration.zero;
+      projectTime = currentTimer.elapsedDuration + completedTime;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: hasActiveTimer
+            ? const Color(0xFF07AA5E).withValues(alpha: 0.15)
+            : AppTheme.textHint.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            hasActiveTimer ? Icons.timer_outlined : Icons.timer_off_outlined,
+            size: FloatingWidgetConstants.compactBadgeIconSize,
+            color: hasActiveTimer
+                ? const Color(0xFF07AA5E)
+                : AppTheme.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            DateTimeUtils.formatDuration(projectTime),
+            style: TextStyle(
+              fontSize: FloatingWidgetConstants.compactBadgeFontSize,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w600,
+              color: hasActiveTimer
+                  ? const Color(0xFF07AA5E)
+                  : AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds the project footer row (icon + name + time badge)
+  Widget _buildProjectFooterRow(
+    List<dynamic> projects,
+    dynamic currentProject,
+    dynamic currentTimer,
+  ) {
+    final projectName = currentTimer?.projectName ?? currentProject?.name;
+    final hasActiveProject = currentTimer != null || currentProject != null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Icon + Name
+          Expanded(
+            child: Row(
+              children: [
+                _buildProjectIcon(currentProject, currentTimer, projects),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    projectName ?? 'Select Project',
+                    style: TextStyle(
+                      color: !hasActiveProject
+                          ? AppTheme.textSecondary
+                          : AppTheme.textPrimary,
+                      fontSize: 13.0,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Right: Project time badge
+          _buildProjectTimeBadge(currentTimer),
+        ],
       ),
     );
   }
@@ -813,50 +966,93 @@ class _FloatingWidgetState
     );
   }
 
-  /// Builds the project name and timer display (centered)
-  Widget _buildProjectInfo(
-    dynamic currentProject,
-    dynamic currentTimer,
-    Duration totalAttendanceTime,
-  ) {
-    // Use project name from currentTimer (API source of truth) if available
-    final projectName = currentTimer?.projectName ?? currentProject?.name;
-    final hasActiveProject = currentTimer != null || currentProject != null;
+  /// Builds the check-in/check-out row with two columns
+  Widget _buildCheckInOutRow() {
+    final attendance = ref.watch(currentAttendanceProvider);
+    final isCheckedIn = attendance?.isCurrentlyCheckedIn ?? false;
+    final hasCheckedOut = attendance?.hasCheckedOut ?? false;
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
-        // Project name
-        Text(
-          projectName ?? 'Select Project',
-          style: TextStyle(
-            color: !hasActiveProject
-                ? AppTheme.textSecondary
-                : AppTheme.textPrimary,
-            fontSize: FloatingWidgetConstants.projectNameFontSize,
-            fontWeight: FontWeight.w500,
+        // Check-In column
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.login,
+                    size: FloatingWidgetConstants.compactBadgeIconSize,
+                    color: const Color(0xFF07AA5E),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Check-In',
+                    style: TextStyle(
+                      fontSize: FloatingWidgetConstants.compactLabelFontSize,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                attendance?.formattedCheckIn ?? '--',
+                style: TextStyle(
+                  fontSize: FloatingWidgetConstants.compactTimeFontSize,
+                  fontWeight: FontWeight.w600,
+                  color: isCheckedIn
+                      ? const Color(0xFF07AA5E)
+                      : AppTheme.textPrimary,
+                ),
+              ),
+            ],
           ),
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
         ),
-        SizedBox(
-          height: FloatingWidgetConstants.nameTimerSpacing,
+        // Vertical divider
+        Container(
+          width: 1,
+          height: 32,
+          color: AppTheme.borderColor,
         ),
-
-        // Timer display - Shows total attendance time (same as main mode)
-        Text(
-          DateTimeUtils.formatDuration(totalAttendanceTime),
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: FloatingWidgetConstants.timerFontSize,
-            fontWeight: FontWeight.w600,
-            fontFamily: 'monospace',
-            letterSpacing: FloatingWidgetConstants.timerLetterSpacing,
+        // Check-Out column
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.logout,
+                    size: FloatingWidgetConstants.compactBadgeIconSize,
+                    color: const Color(0xFFF97316),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Check-Out',
+                    style: TextStyle(
+                      fontSize: FloatingWidgetConstants.compactLabelFontSize,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                attendance?.formattedCheckOut ?? '--',
+                style: TextStyle(
+                  fontSize: FloatingWidgetConstants.compactTimeFontSize,
+                  fontWeight: FontWeight.w600,
+                  color: hasCheckedOut
+                      ? const Color(0xFFF97316)
+                      : AppTheme.textPrimary,
+                ),
+              ),
+            ],
           ),
-          overflow: TextOverflow.clip,
-          maxLines: 1,
         ),
       ],
     );

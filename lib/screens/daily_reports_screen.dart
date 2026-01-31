@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:window_manager/window_manager.dart';
 import '../core/theme/app_theme.dart';
 import '../services/api_service.dart';
 import '../services/logger_service.dart';
@@ -328,11 +329,33 @@ class _DailyReportsScreenState extends State<DailyReportsScreen> {
               ),
             ],
           ),
-          // Window controls (minimize, close)
-          const Positioned(
-            top: 8,
-            right: 8,
-            child: WindowControls(),
+          // Top bar with draggable area and window controls
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 40,
+            child: Row(
+              children: [
+                // Draggable area (left side)
+                Expanded(
+                  child: GestureDetector(
+                    onPanStart: (_) => windowManager.startDragging(),
+                    child: Container(
+                      color: Colors.transparent,
+                    ),
+                  ),
+                ),
+                // Window control buttons (minimize, close)
+                const Padding(
+                  padding: EdgeInsets.only(
+                    top: 8,
+                    right: 8,
+                  ),
+                  child: WindowControls(),
+                ),
+              ],
+            ),
           ),
         ],
       ),

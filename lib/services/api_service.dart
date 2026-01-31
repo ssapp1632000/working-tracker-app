@@ -1536,4 +1536,51 @@ class ApiService {
       return null;
     }
   }
+
+  /// Get user's notifications
+  ///
+  /// GET /notifications/my-notifications
+  Future<List<Map<String, dynamic>>> getNotifications({int limit = 50}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/notifications/my-notifications').replace(
+        queryParameters: {'limit': limit.toString()},
+      );
+
+      _logger.info('Fetching notifications (limit: $limit)');
+
+      final response = await _makeRequest(
+        method: 'GET',
+        uri: uri,
+      );
+
+      if (response.statusCode == 200) {
+        // Log raw response for debugging
+        _logger.info('Raw API Response: ${response.body}');
+
+        final data = json.decode(response.body);
+
+        // Handle both array response and object with data property
+        if (data is List) {
+          _logger.info('Fetched ${data.length} notifications (array format)');
+          _logger.info('Notification IDs: ${data.map((n) => n['_id'] ?? n['id']).toList()}');
+          return List<Map<String, dynamic>>.from(data);
+        } else if (data is Map<String, dynamic> && data.containsKey('data')) {
+          final notifications = data['data'] as List;
+          _logger.info('Fetched ${notifications.length} notifications (object format)');
+          _logger.info('Notification IDs: ${notifications.map((n) => n['_id'] ?? n['id']).toList()}');
+          return List<Map<String, dynamic>>.from(notifications);
+        } else {
+          _logger.warning('Unexpected response format for notifications');
+          _logger.warning('Response data: $data');
+          return [];
+        }
+      } else {
+        _logger.error('Failed to fetch notifications: ${response.statusCode} - ${response.body}');
+        return [];
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error fetching notifications', e, stackTrace);
+      return [];
+    }
+  }
 }

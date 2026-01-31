@@ -6,6 +6,7 @@ import '../models/project.dart';
 import '../models/time_entry.dart';
 import '../models/report.dart';
 import '../models/task.dart';
+import '../models/notification.dart';
 import 'logger_service.dart';
 
 class StorageService {
@@ -19,6 +20,7 @@ class StorageService {
   late Box<TimeEntry> _timeEntryBox;
   late Box<Report> _reportBox;
   late Box<Task> _taskBox;
+  late Box<AppNotification> _notificationsBox;
   late Box<dynamic> _settingsBox;
 
   StorageService._internal();
@@ -39,6 +41,7 @@ class StorageService {
       Hive.registerAdapter(TimeEntryAdapter());
       Hive.registerAdapter(ReportAdapter());
       Hive.registerAdapter(TaskAdapter());
+      Hive.registerAdapter(AppNotificationAdapter());
 
       // Open boxes
       _userBox = await Hive.openBox<User>(AppConstants.hiveBoxUser);
@@ -46,6 +49,7 @@ class StorageService {
       _timeEntryBox = await Hive.openBox<TimeEntry>(AppConstants.hiveBoxTimeEntries);
       _reportBox = await Hive.openBox<Report>(AppConstants.hiveBoxReports);
       _taskBox = await Hive.openBox<Task>(AppConstants.hiveBoxTasks);
+      _notificationsBox = await Hive.openBox<AppNotification>('notifications');
       _settingsBox = await Hive.openBox<dynamic>(AppConstants.hiveBoxSettings);
 
       _logger.info('Hive storage initialized successfully');
@@ -310,6 +314,15 @@ class StorageService {
   }
 
   // ============================================================================
+  // NOTIFICATION OPERATIONS
+  // ============================================================================
+
+  /// Get notifications box
+  Box<AppNotification> getNotificationsBox() {
+    return _notificationsBox;
+  }
+
+  // ============================================================================
   // SETTINGS OPERATIONS (for update check preferences)
   // ============================================================================
 
@@ -350,6 +363,7 @@ class StorageService {
       await _timeEntryBox.clear();
       await _reportBox.clear();
       await _taskBox.clear();
+      await _notificationsBox.clear();
       await _settingsBox.clear();
       _logger.warning('All storage cleared');
     } catch (e, stackTrace) {
@@ -366,6 +380,7 @@ class StorageService {
       await _timeEntryBox.close();
       await _reportBox.close();
       await _taskBox.close();
+      await _notificationsBox.close();
       await _settingsBox.close();
       _logger.info('Storage closed');
     } catch (e, stackTrace) {

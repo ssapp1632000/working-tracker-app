@@ -4,6 +4,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/attendance_event.dart';
 import '../models/task_event.dart';
 import '../models/time_entry_event.dart';
+import '../models/notification_event.dart';
 import 'logger_service.dart';
 import 'storage_service.dart';
 
@@ -40,6 +41,9 @@ class SocketService {
   // Stream controller for broadcasting task events
   final _taskEventController = StreamController<TaskEvent>.broadcast();
 
+  // Stream controller for broadcasting notification events
+  final _notificationEventController = StreamController<NotificationEvent>.broadcast();
+
   // Stream controller for token error events (for triggering token refresh)
   final _tokenErrorController = StreamController<String>.broadcast();
 
@@ -53,6 +57,9 @@ class SocketService {
 
   /// Stream of task events for providers to listen to
   Stream<TaskEvent> get taskEventStream => _taskEventController.stream;
+
+  /// Stream of notification events for providers to listen to
+  Stream<NotificationEvent> get notificationEventStream => _notificationEventController.stream;
 
   /// Stream of token error events for triggering token refresh
   Stream<String> get tokenErrorStream => _tokenErrorController.stream;
@@ -300,6 +307,25 @@ class SocketService {
         _logger.error('Failed to parse task:deleted event', e, stackTrace);
       }
     });
+
+    // Notification events - listen to all notification types with generic handler
+    // The backend sends a generic 'notification:received' event or individual typed events
+    // We'll listen to a catch-all pattern if backend uses one, or individual types
+
+    // Generic notification event (if backend sends this)
+    _socket!.on('notification:received', (data) {
+      _logger.info('Received notification:received event: $data');
+      try {
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        final event = NotificationEvent.fromSocketPayload(payload);
+        _notificationEventController.add(event);
+        _logger.info('Processed notification: ${event.notification.type}');
+      } catch (e, stackTrace) {
+        _logger.error('Failed to parse notification event', e, stackTrace);
+      }
+    });
   }
 
   /// Disconnect from the Socket.IO server
@@ -327,6 +353,7 @@ class SocketService {
     _eventController.close();
     _attendanceEventController.close();
     _taskEventController.close();
+    _notificationEventController.close();
     _tokenErrorController.close();
   }
 }

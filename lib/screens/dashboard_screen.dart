@@ -23,6 +23,7 @@ import '../widgets/multi_project_task_dialog.dart';
 import '../widgets/project_list_card.dart';
 import '../widgets/floating_widget.dart';
 import '../widgets/add_task_dialog.dart';
+import '../widgets/notification_bell.dart';
 import '../models/project_with_time.dart';
 import '../providers/pending_tasks_provider.dart';
 import '../providers/socket_provider.dart';
@@ -684,6 +685,9 @@ class _DashboardScreenState
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
+                          const SizedBox(width: 12),
+                          // Notification bell
+                          const NotificationBell(),
                           const SizedBox(width: 12),
                           // Floating mode button
                           IconButton(

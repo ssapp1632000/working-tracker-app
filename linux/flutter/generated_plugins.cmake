@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   file_selector_linux
+  local_notifier
   screen_capturer_linux
   screen_retriever_linux
   system_tray
